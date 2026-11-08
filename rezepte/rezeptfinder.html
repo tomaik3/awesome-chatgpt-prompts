@@ -1,0 +1,796 @@
+<title>Rezeptfinder</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: eine schmale Daumenspalte. Oben die Suchmaske als Karte, darunter Vorschläge als tippbare Liste, darunter das Rezept-Sheet mit gemaltem Teller */
+:root {
+  --bg: #f8f1ec; --sheet: #fffaf6; --ink: #2a1a15; --muted: #7b6158; --line: #ead9cf;
+  --tomato: #c23a1e; --tomato-soft: #fbe3da; --basil: #3d6a35; --basil-soft: #e2eedb;
+  --parm: #9a6a14; --parm-soft: #f7ebcf; --chip: #f3e6dd; --on-accent: #fff;
+  --shadow: 0 8px 30px rgba(60, 25, 10, .10);
+  --display: "Bricolage Grotesque", "Avenir Next Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "Figtree", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #17110f; --sheet: #211816; --ink: #f5e9e2; --muted: #b9a198; --line: #3a2b26;
+    --tomato: #f06c4c; --tomato-soft: #43201a; --basil: #94c486; --basil-soft: #22301f;
+    --parm: #e6b85c; --parm-soft: #3a2e17; --chip: #2e2320; --on-accent: #1b0f0b; --shadow: 0 8px 30px rgba(0,0,0,.45);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #17110f; --sheet: #211816; --ink: #f5e9e2; --muted: #b9a198; --line: #3a2b26;
+  --tomato: #f06c4c; --tomato-soft: #43201a; --basil: #94c486; --basil-soft: #22301f;
+  --parm: #e6b85c; --parm-soft: #3a2e17; --chip: #2e2320; --on-accent: #1b0f0b; --shadow: 0 8px 30px rgba(0,0,0,.45);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 16.5px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+.page {
+  max-width: 600px; margin: 0 auto; display: grid; gap: 22px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 22px 48px;
+}
+h1, h2, h3 { font-family: var(--display); font-weight: 800; letter-spacing: -.015em; margin: 0; text-wrap: balance; line-height: 1.08; }
+.brand { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.brand h1 { font-size: clamp(1.9rem, 8vw, 2.5rem); font-variation-settings: "opsz" 96; }
+.brand h1 em { font-style: normal; color: var(--tomato); }
+.brand p { margin: 0; color: var(--muted); font-size: 14px; }
+.mode { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.mode.ai { color: var(--basil); }
+
+/* Suchmaske */
+.form { background: var(--sheet); border-radius: 24px; padding: 18px; box-shadow: var(--shadow); display: grid; gap: 18px; }
+.search { position: relative; }
+.search svg { position: absolute; left: 14px; top: 50%; width: 20px; height: 20px; margin-top: -10px; color: var(--muted); pointer-events: none; }
+.search input {
+  width: 100%; min-height: 54px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--bg); color: var(--ink);
+  font: 500 17px var(--body); padding: 0 14px 0 44px;
+}
+.search input:focus { outline: none; border-color: var(--tomato); box-shadow: 0 0 0 3px var(--tomato-soft); }
+.quick { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.quick button { border: 0; background: var(--chip); color: var(--ink); border-radius: 999px; padding: 6px 12px; font: 500 13.5px var(--body); cursor: pointer; }
+.field { display: grid; gap: 8px; }
+.label { font-size: 12.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.row { display: flex; gap: 14px; flex-wrap: wrap; align-items: end; justify-content: space-between; }
+.chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.chip {
+  min-height: 38px; padding: 0 13px; border-radius: 999px; border: 1.5px solid var(--line); background: transparent; color: var(--ink);
+  font: 600 14px var(--body); cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+}
+.chip[aria-pressed="true"] { background: var(--tomato-soft); border-color: var(--tomato); color: var(--tomato); }
+.chip.diet[aria-pressed="true"] { background: var(--basil-soft); border-color: var(--basil); color: var(--basil); }
+.chip[aria-pressed="true"]::before { content: "✓"; font-size: 12px; }
+select {
+  min-height: 44px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--bg); color: var(--ink);
+  font: 600 15px var(--body); padding: 0 12px;
+}
+.stepper { display: inline-flex; align-items: center; background: var(--chip); border-radius: 999px; padding: 4px; gap: 2px; }
+.stepper button {
+  width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--sheet); color: var(--ink);
+  font: 600 21px/1 var(--body); cursor: pointer; display: grid; place-items: center; box-shadow: 0 1px 2px rgba(0,0,0,.08);
+}
+.stepper button:disabled { opacity: .35; cursor: default; }
+.stepper output { min-width: 86px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.stepper output small { display: block; font-size: 11px; font-weight: 500; color: var(--muted); }
+.go {
+  min-height: 54px; border-radius: 16px; border: 0; background: var(--tomato); color: var(--on-accent);
+  font: 700 17px var(--body); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;
+}
+.go:disabled { opacity: .6; cursor: progress; }
+
+/* Status */
+.status { border-radius: 16px; padding: 14px 16px; background: var(--chip); font-size: 15px; display: flex; gap: 12px; align-items: center; }
+.status.warn { background: var(--tomato-soft); }
+.status .btnlink { margin-left: auto; }
+.spin { width: 20px; height: 20px; border-radius: 50%; border: 2.5px solid var(--line); border-top-color: var(--tomato); animation: spin .8s linear infinite; flex: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.bar { height: 4px; background: var(--line); border-radius: 4px; overflow: hidden; margin-top: 6px; }
+.bar i { display: block; height: 100%; width: 0; background: var(--tomato); transition: width .3s; }
+.btnlink { border: 0; background: none; color: var(--tomato); font: 700 14.5px var(--body); cursor: pointer; padding: 6px 0; }
+
+/* Vorschläge */
+.sugg h2, .rec h2 { font-size: 1.45rem; font-variation-settings: "opsz" 48; }
+.sugg { display: grid; gap: 12px; }
+.slist { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.scard {
+  width: 100%; text-align: left; border: 1.5px solid var(--line); background: var(--sheet); color: var(--ink); border-radius: 20px;
+  padding: 12px; font: inherit; cursor: pointer; display: grid; grid-template-columns: 64px minmax(0, 1fr) 20px; gap: 14px; align-items: center;
+}
+.scard:hover { border-color: var(--tomato); }
+.scard[aria-current="true"] { border-color: var(--tomato); background: var(--tomato-soft); }
+.scard canvas { width: 64px; height: 64px; border-radius: 50%; display: block; }
+.scard b { font-family: var(--display); font-size: 1.12rem; font-weight: 800; display: block; line-height: 1.2; }
+.scard .d { font-size: 14px; color: var(--muted); display: block; margin-top: 2px; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.meta span { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 6px; background: var(--chip); color: var(--muted); font-variant-numeric: tabular-nums; }
+.meta .why { background: var(--basil-soft); color: var(--basil); }
+.scard .arr { color: var(--muted); }
+
+/* Rezept */
+.rec { background: var(--sheet); border-radius: 26px; overflow: hidden; box-shadow: var(--shadow); }
+.hero { aspect-ratio: 16 / 10; width: 100%; max-width: 100%; display: block; background: #3a271f; }
+.rbody { padding: 22px 18px 28px; display: grid; gap: 30px; }
+@media (min-width: 560px) { .rbody { padding: 26px 28px 32px; } }
+.eyebrow { font-size: 12.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--tomato); margin: 0 0 8px; }
+.rec h2.title { font-size: clamp(1.8rem, 7.6vw, 2.5rem); line-height: 1.04; font-variation-settings: "opsz" 96; }
+.lede { margin: 10px 0 0; color: var(--muted); }
+.facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-top: 20px; border: 1px solid var(--line); border-radius: 18px; }
+.fact { padding: 13px 6px 11px; text-align: center; display: grid; gap: 3px; justify-items: center; min-width: 0; }
+.fact + .fact { border-left: 1px solid var(--line); }
+.fact svg { width: 22px; height: 22px; color: var(--tomato); }
+.fact b { font-family: var(--display); font-size: 1.15rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.fact span { font-size: 12.5px; color: var(--muted); }
+.dots { display: inline-flex; gap: 4px; margin-top: 3px; }
+.dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+.dots i.on { background: var(--tomato); }
+.timeline { margin: 10px 0 0; font-size: 13.5px; color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
+.sec-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.rec h3 { font-size: 1.4rem; font-variation-settings: "opsz" 48; }
+.ings { list-style: none; margin: 0; padding: 0; }
+.ings li { display: grid; grid-template-columns: 6.6em minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 10px 0; border-bottom: 1px dashed var(--line); }
+.ings li:last-child { border-bottom: 0; }
+.qty { font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+.qty.none { color: var(--muted); font-weight: 500; }
+.iname { min-width: 0; overflow-wrap: anywhere; }
+.iname .note { color: var(--muted); font-size: 14px; }
+.tag { display: inline-block; vertical-align: 2px; margin-left: 6px; padding: 1px 7px; border-radius: 6px; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; background: var(--parm-soft); color: var(--parm); }
+.tag.bad { background: var(--tomato); color: var(--on-accent); }
+.alert { border-radius: 16px; padding: 14px 16px; background: var(--tomato); color: var(--on-accent); font-weight: 600; }
+.allergy { border-radius: 20px; background: var(--tomato-soft); padding: 18px; }
+.allergy h3 { font-size: 1.15rem; display: flex; gap: 10px; align-items: center; }
+.allergy h3 svg { width: 22px; height: 22px; color: var(--tomato); flex: none; }
+.allergy dl { margin: 12px 0 0; display: grid; gap: 12px; }
+.allergy dt { font-weight: 700; }
+.allergy dd { margin: 2px 0 0; font-size: 15px; opacity: .88; }
+.allergy .eu { margin: 14px 0 0; font-size: 13px; color: var(--muted); }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.step {
+  width: 100%; display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 14px; text-align: left; border: 1px solid var(--line);
+  background: transparent; color: var(--ink); border-radius: 18px; padding: 14px 14px 14px 12px; font: inherit; cursor: pointer;
+}
+.step .n { width: 38px; height: 38px; border-radius: 50%; background: var(--tomato); color: var(--on-accent); font: 800 1.1rem/38px var(--display); text-align: center; }
+.step .t { min-width: 0; }
+.step .t strong { display: block; margin-bottom: 2px; }
+.step .time { display: inline-block; margin-top: 6px; font-size: 12.5px; font-weight: 600; color: var(--muted); background: var(--chip); padding: 1px 8px; border-radius: 6px; }
+.step[aria-pressed="true"] { background: var(--basil-soft); border-color: transparent; }
+.step[aria-pressed="true"] .n { background: var(--basil); font-size: 0; }
+.step[aria-pressed="true"] .n::after { content: "✓"; font-size: 1.05rem; }
+.step[aria-pressed="true"] .t { opacity: .6; }
+.hint { font-size: 13.5px; color: var(--muted); margin: 10px 0 0; }
+.nutri { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); border-top: 1px solid var(--line); }
+.nutri div { padding: 11px 4px; border-bottom: 1px solid var(--line); }
+.nutri b { display: block; font-family: var(--display); font-size: 1.25rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.nutri span { font-size: 13px; color: var(--muted); }
+.foot { font-size: 12.5px; color: var(--muted); margin: 0; }
+button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="page">
+  <header class="brand">
+    <div>
+      <h1>Rezept<em>finder</em></h1>
+      <p>Gericht eingeben, Wünsche wählen, Rezept bekommen.</p>
+    </div>
+    <span class="mode" id="mode">Sammlung</span>
+  </header>
+
+  <form class="form" id="form" autocomplete="off">
+    <div class="field">
+      <label class="label" for="q">Was möchtest du kochen?</label>
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input id="q" name="q" type="search" enterkeyhint="search" maxlength="160" placeholder="z. B. Lasagne, etwas mit Kürbis, schnelles Curry" value="Cremige Gnocchi">
+      </div>
+      <div class="quick" id="quick" aria-label="Ideen">
+        <button type="button">Kürbissuppe</button><button type="button">Linsen-Dal</button><button type="button">Ofengemüse</button><button type="button">Pfannkuchen</button>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <span class="label" id="lblServ">Personen</span>
+        <div class="stepper" role="group" aria-labelledby="lblServ">
+          <button type="button" id="fMinus" aria-label="Eine Person weniger">−</button>
+          <output id="fServ" aria-live="polite">4 Personen</output>
+          <button type="button" id="fPlus" aria-label="Eine Person mehr">+</button>
+        </div>
+      </div>
+      <div class="field">
+        <label class="label" for="time">Zeit</label>
+        <select id="time">
+          <option value="">egal</option><option value="20">bis 20 Min</option><option value="30">bis 30 Min</option>
+          <option value="45">bis 45 Min</option><option value="60">bis 60 Min</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="field">
+      <span class="label" id="lblAll">Unverträglichkeiten</span>
+      <div class="chips" id="allergies" role="group" aria-labelledby="lblAll"></div>
+    </div>
+    <div class="field">
+      <span class="label" id="lblDiet">Wünsche</span>
+      <div class="chips" id="diets" role="group" aria-labelledby="lblDiet"></div>
+    </div>
+
+    <button class="go" id="go" type="submit">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      Passende Gerichte finden
+    </button>
+  </form>
+
+  <div id="status" class="status" hidden></div>
+
+  <section class="sugg" id="sugg" aria-labelledby="hSugg" hidden>
+    <h2 id="hSugg">Vorschläge</h2>
+    <ul class="slist" id="slist"></ul>
+  </section>
+
+  <article class="rec" id="rec" aria-labelledby="rTitle" hidden></article>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------- Stammdaten ---------- */
+  var ALLERGIES = [
+    ["gluten", "Gluten"], ["laktose", "Laktose"], ["milcheiweiss", "Milcheiweiß"], ["ei", "Ei"], ["nuesse", "Nüsse"],
+    ["erdnuesse", "Erdnüsse"], ["soja", "Soja"], ["fisch", "Fisch"], ["krebstiere", "Krebstiere"], ["sellerie", "Sellerie"],
+    ["senf", "Senf"], ["sesam", "Sesam"], ["histamin", "Histamin"], ["fructose", "Fructose"]
+  ];
+  var DIETS = [["vegetarisch", "Vegetarisch"], ["vegan", "Vegan"], ["ohne Zucker", "Ohne Zucker"], ["low carb", "Low Carb"], ["kinderfreundlich", "Kinderfreundlich"]];
+  var LABEL = {};
+  ALLERGIES.forEach(function (a) { LABEL[a[0]] = a[1]; });
+  LABEL.weichtiere = "Weichtiere"; LABEL.lupine = "Lupine"; LABEL.sulfite = "Sulfite";
+
+  // Eingebaute Sammlung: funktioniert auch ohne Claude.
+  var LIB = [
+    { name: "Cremige Tomaten-Gnocchi-Pfanne", tags: "gnocchi tomate sahne italienisch pfanne schnell vegetarisch cremig spinat", farben: ["#d44a24", "#e9b468", "#3f7a33"],
+      beschreibung: "Knusprig angebratene Gnocchi in samtiger Tomaten-Sahne-Sauce mit Spinat, Parmesan und Basilikum. Nur eine Pfanne.",
+      zeit: { vorbereitung: 10, kochen: 15, ruhe: 0 }, portionen: 4, schwierigkeit: 1, vegetarisch: true,
+      zutaten: [
+        { menge: 800, einheit: "g", name: "Gnocchi", hinweis: "aus dem Kühlregal", allergene: ["gluten", "ei"] },
+        { menge: 3, einheit: "EL", name: "Olivenöl" },
+        { menge: 1, einheit: "Stück", name: "Zwiebel", name_plural: "Zwiebeln" },
+        { menge: 2, einheit: "Zehe", name: "Knoblauch" },
+        { menge: 1, einheit: "EL", name: "Tomatenmark", allergene: ["histamin"] },
+        { menge: 400, einheit: "g", name: "stückige Tomaten", allergene: ["histamin"] },
+        { menge: 250, einheit: "g", name: "Kirschtomaten" },
+        { menge: 150, einheit: "ml", name: "Sahne", allergene: ["laktose", "milcheiweiss"] },
+        { menge: 100, einheit: "g", name: "Babyspinat", allergene: ["histamin"] },
+        { menge: 50, einheit: "g", name: "Parmesan", hinweis: "frisch gerieben", allergene: ["milcheiweiss", "histamin"] },
+        { menge: 1, einheit: "TL", name: "Oregano", hinweis: "getrocknet" },
+        { menge: 0.5, einheit: "TL", name: "Zucker" },
+        { menge: 1, einheit: "Handvoll", name: "Basilikum", hinweis: "frisch" },
+        { menge: null, einheit: "", name: "Salz und Pfeffer" }
+      ],
+      schritte: [
+        { titel: "Vorbereiten", text: "Zwiebel fein würfeln, Knoblauch hacken, Kirschtomaten halbieren, Parmesan reiben.", minuten: 5 },
+        { titel: "Gnocchi anbraten", text: "Zwei Drittel vom Öl stark erhitzen, Gnocchi ungekocht goldbraun braten, herausnehmen.", minuten: 6 },
+        { titel: "Aromen anschwitzen", text: "Restliches Öl in die Pfanne, Zwiebel glasig dünsten, Knoblauch und Tomatenmark eine Minute mitrösten.", minuten: 4 },
+        { titel: "Sauce köcheln", text: "Stückige Tomaten, Kirschtomaten, Oregano und Zucker einrühren und offen köcheln lassen.", minuten: 4 },
+        { titel: "Cremig machen", text: "Sahne einrühren, Spinat unterheben, bis er zusammenfällt. Mit Salz und Pfeffer abschmecken.", minuten: 2 },
+        { titel: "Fertigstellen", text: "Gnocchi zurück in die Pfanne geben, schwenken, mit Parmesan und Basilikum servieren.", minuten: 1 }
+      ],
+      naehrwerte: { kcal: 580, eiweiss: 16, fett: 23, kohlenhydrate: 75, ballaststoffe: 6 },
+      hinweise: [
+        { titel: "Gluten", text: "Klassische Gnocchi enthalten Weizen. Glutenfreie Gnocchi aus Reis- oder Maismehl verwenden." },
+        { titel: "Laktose", text: "Laktosefreie Sahne nehmen. Gereifter Parmesan ist von Natur aus nahezu laktosefrei." },
+        { titel: "Ei", text: "Manche Gnocchi enthalten Ei. Zutatenliste auf der Packung prüfen." }
+      ] },
+    { name: "Linsen-Dal mit Kokos", tags: "dal linsen curry indisch kokos vegan glutenfrei eintopf scharf", farben: ["#e0a12a", "#f4e3c1", "#4f8a3a"],
+      beschreibung: "Rote Linsen, Kokosmilch und warme Gewürze, in einem Topf gekocht. Sättigend, mild-würzig und von Natur aus vegan.",
+      zeit: { vorbereitung: 10, kochen: 25, ruhe: 0 }, portionen: 4, schwierigkeit: 1, vegan: true, vegetarisch: true,
+      zutaten: [
+        { menge: 250, einheit: "g", name: "rote Linsen" },
+        { menge: 400, einheit: "ml", name: "Kokosmilch" },
+        { menge: 400, einheit: "g", name: "gehackte Tomaten", allergene: ["histamin"] },
+        { menge: 500, einheit: "ml", name: "Gemüsebrühe", hinweis: "auf Sellerie prüfen", allergene: ["sellerie"] },
+        { menge: 1, einheit: "Stück", name: "Zwiebel", name_plural: "Zwiebeln" },
+        { menge: 2, einheit: "Zehe", name: "Knoblauch" },
+        { menge: 20, einheit: "g", name: "Ingwer" },
+        { menge: 2, einheit: "TL", name: "Currypulver", hinweis: "kann Senf enthalten", allergene: ["senf"] },
+        { menge: 1, einheit: "TL", name: "Kurkuma" },
+        { menge: 1, einheit: "TL", name: "Kreuzkümmel" },
+        { menge: 2, einheit: "EL", name: "Rapsöl" },
+        { menge: 1, einheit: "Stück", name: "Limette", name_plural: "Limetten" },
+        { menge: 1, einheit: "Handvoll", name: "Koriander", hinweis: "frisch" },
+        { menge: null, einheit: "", name: "Salz" }
+      ],
+      schritte: [
+        { titel: "Anschwitzen", text: "Zwiebel, Knoblauch und Ingwer fein hacken und im Öl glasig dünsten.", minuten: 5 },
+        { titel: "Gewürze rösten", text: "Curry, Kurkuma und Kreuzkümmel zugeben und eine Minute mitrösten.", minuten: 1 },
+        { titel: "Köcheln", text: "Linsen abspülen, mit Tomaten, Kokosmilch und Brühe zugeben. Offen köcheln, bis die Linsen zerfallen.", minuten: 20 },
+        { titel: "Abschmecken", text: "Mit Salz und Limettensaft abschmecken, mit Koriander bestreuen.", minuten: 2 }
+      ],
+      naehrwerte: { kcal: 470, eiweiss: 18, fett: 25, kohlenhydrate: 40, ballaststoffe: 9 },
+      hinweise: [
+        { titel: "Sellerie und Senf", text: "Viele Brühen enthalten Sellerie, manche Currymischungen Senf. Etikett prüfen." },
+        { titel: "Reizdarm", text: "Hülsenfrüchte, Zwiebel und Knoblauch sind reich an FODMAPs." }
+      ] },
+    { name: "Ofengemüse mit Feta", tags: "ofen gemüse feta kartoffel blech vegetarisch glutenfrei kichererbsen mediterran", farben: ["#e2642e", "#f1e8d2", "#5c8f3c"],
+      beschreibung: "Kartoffeln, Paprika, Zucchini und Kichererbsen vom Blech, am Ende mit zerbröseltem Feta. Wenig Arbeit, der Ofen macht den Rest.",
+      zeit: { vorbereitung: 15, kochen: 35, ruhe: 0 }, portionen: 4, schwierigkeit: 1, vegetarisch: true,
+      zutaten: [
+        { menge: 600, einheit: "g", name: "Kartoffeln", hinweis: "festkochend" },
+        { menge: 2, einheit: "Stück", name: "Paprika", hinweis: "rot und gelb" },
+        { menge: 1, einheit: "Stück", name: "Zucchini", name_plural: "Zucchini" },
+        { menge: 2, einheit: "Stück", name: "rote Zwiebel", name_plural: "rote Zwiebeln" },
+        { menge: 240, einheit: "g", name: "Kichererbsen", hinweis: "abgetropft" },
+        { menge: 4, einheit: "EL", name: "Olivenöl" },
+        { menge: 2, einheit: "TL", name: "Paprikapulver", hinweis: "edelsüß" },
+        { menge: 1, einheit: "TL", name: "Thymian", hinweis: "getrocknet" },
+        { menge: 200, einheit: "g", name: "Feta", allergene: ["milcheiweiss", "laktose"] },
+        { menge: 0.5, einheit: "Stück", name: "Zitrone", name_plural: "Zitronen" },
+        { menge: null, einheit: "", name: "Salz und Pfeffer" }
+      ],
+      schritte: [
+        { titel: "Ofen vorheizen", text: "Backofen auf 220 °C Umluft vorheizen.", minuten: 5 },
+        { titel: "Schneiden", text: "Kartoffeln in Spalten, Paprika und Zucchini in Stücke, Zwiebeln in Achtel schneiden.", minuten: 10 },
+        { titel: "Würzen und backen", text: "Gemüse und Kichererbsen mit Öl, Paprikapulver, Thymian, Salz und Pfeffer mischen, auf dem Blech verteilen und backen.", minuten: 30 },
+        { titel: "Fertigstellen", text: "Feta darüberbröseln, 5 Minuten weiterbacken, mit Zitronensaft beträufeln.", minuten: 5 }
+      ],
+      naehrwerte: { kcal: 450, eiweiss: 17, fett: 24, kohlenhydrate: 38, ballaststoffe: 9 },
+      hinweise: [
+        { titel: "Milch", text: "Feta enthält Milcheiweiß und etwas Laktose. Für vegan: Feta weglassen oder durch Tofu-Feta ersetzen." }
+      ] },
+    { name: "Fluffige Pfannkuchen", tags: "pfannkuchen eierkuchen süß frühstück dessert kinder vegetarisch", farben: ["#e8b25e", "#f7ecd4", "#b0352a"],
+      beschreibung: "Dicke, luftige Pfannkuchen mit Backpulver, außen goldbraun. Mit Beeren, Ahornsirup oder Apfelmus servieren.",
+      zeit: { vorbereitung: 10, kochen: 15, ruhe: 0 }, portionen: 4, schwierigkeit: 1, vegetarisch: true,
+      zutaten: [
+        { menge: 250, einheit: "g", name: "Weizenmehl", allergene: ["gluten"] },
+        { menge: 300, einheit: "ml", name: "Milch", allergene: ["laktose", "milcheiweiss"] },
+        { menge: 3, einheit: "Stück", name: "Ei", name_plural: "Eier", allergene: ["ei"] },
+        { menge: 2, einheit: "TL", name: "Backpulver" },
+        { menge: 2, einheit: "EL", name: "Zucker" },
+        { menge: 1, einheit: "Prise", name: "Salz" },
+        { menge: 30, einheit: "g", name: "Butter", hinweis: "zum Braten", allergene: ["milcheiweiss"] }
+      ],
+      schritte: [
+        { titel: "Teig rühren", text: "Mehl, Backpulver, Zucker und Salz mischen. Milch und Eier verquirlen und kurz unterrühren, bis keine Mehlnester mehr da sind.", minuten: 5 },
+        { titel: "Quellen lassen", text: "Teig 5 Minuten stehen lassen, damit er Blasen bildet.", minuten: 5 },
+        { titel: "Ausbacken", text: "Etwas Butter bei mittlerer Hitze schmelzen, kleine Kellen Teig hineingeben, wenden sobald sich Blasen zeigen.", minuten: 15 }
+      ],
+      naehrwerte: { kcal: 360, eiweiss: 12, fett: 11, kohlenhydrate: 52, ballaststoffe: 2 },
+      hinweise: [
+        { titel: "Gluten", text: "Durch eine glutenfreie Mehlmischung ersetzen, dann einen halben TL mehr Backpulver nehmen." },
+        { titel: "Ei", text: "Pro Ei 50 g Apfelmus oder 1 EL geschrotete Leinsamen mit 3 EL Wasser verwenden." }
+      ] }
+  ];
+
+  /* ---------- Zustand ---------- */
+  var form = { q: "Cremige Gnocchi", serv: 4, time: "", allergies: [], diets: [] };
+  var cur = null;          // angezeigtes Rezept
+  var curServ = 4;
+  var done = {};
+  var sample = null;
+  var ctl = null;
+
+  function $(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function num(v, d) { var n = Number(v); return isFinite(n) && n >= 0 ? n : d; }
+  function hex(c, d) { return /^#[0-9a-f]{6}$/i.test(c || "") ? c : d; }
+
+  try {
+    var sv = JSON.parse(localStorage.getItem("rezeptfinder") || "null");
+    if (sv && sv.form) form = Object.assign(form, sv.form);
+    if (sv && sv.recipe) { cur = sv.recipe; curServ = sv.serv || cur.portionen; }
+  } catch (e) {}
+  function save() { try { localStorage.setItem("rezeptfinder", JSON.stringify({ form: form, recipe: cur, serv: curServ })); } catch (e) {} }
+
+  /* ---------- Formular ---------- */
+  function chips(el, list, key, cls) {
+    el.innerHTML = list.map(function (a) {
+      return '<button type="button" class="chip ' + cls + '" data-v="' + esc(a[0]) + '" aria-pressed="' + (form[key].indexOf(a[0]) > -1) + '">' + esc(a[1]) + "</button>";
+    }).join("");
+    el.addEventListener("click", function (e) {
+      var b = e.target.closest(".chip"); if (!b) return;
+      var v = b.getAttribute("data-v"), i = form[key].indexOf(v);
+      if (i > -1) form[key].splice(i, 1); else form[key].push(v);
+      b.setAttribute("aria-pressed", i < 0);
+      save();
+    });
+  }
+  chips($("allergies"), ALLERGIES, "allergies", "");
+  chips($("diets"), DIETS, "diets", "diet");
+  $("q").value = form.q; $("time").value = form.time;
+  function renderFormServ() {
+    $("fServ").textContent = form.serv + (form.serv === 1 ? " Person" : " Personen");
+    $("fMinus").disabled = form.serv <= 1; $("fPlus").disabled = form.serv >= 12;
+  }
+  renderFormServ();
+  $("fMinus").onclick = function () { if (form.serv > 1) { form.serv--; renderFormServ(); save(); } };
+  $("fPlus").onclick = function () { if (form.serv < 12) { form.serv++; renderFormServ(); save(); } };
+  $("time").onchange = function () { form.time = this.value; save(); };
+  $("q").oninput = function () { form.q = this.value; save(); };
+  $("quick").addEventListener("click", function (e) {
+    if (e.target.tagName !== "BUTTON") return;
+    $("q").value = form.q = e.target.textContent; save(); search();
+  });
+  $("form").addEventListener("submit", function (e) { e.preventDefault(); search(); });
+
+  /* ---------- Status ---------- */
+  function status(html, kind) {
+    var s = $("status");
+    if (!html) { s.hidden = true; s.innerHTML = ""; return; }
+    s.className = "status" + (kind ? " " + kind : ""); s.innerHTML = html; s.hidden = false;
+  }
+  function busy(text, withStop) {
+    status('<span class="spin" aria-hidden="true"></span><div style="flex:1;min-width:0"><span id="busyTxt">' + esc(text) + '</span><div class="bar"><i id="busyBar"></i></div></div>' +
+      (withStop ? '<button type="button" class="btnlink" id="stop">Stopp</button>' : ""));
+    var st = $("stop"); if (st) st.onclick = function () { if (ctl) ctl.abort(); };
+  }
+  function errText(e) {
+    var c = e && e.code;
+    if (c === "not_granted" || c === "sampling_disabled" || c === "capability_disabled" || c === "not_declared" || c === "capability_removed") return "Claude ist hier nicht freigegeben. Ich nutze die eingebaute Sammlung.";
+    if (c === "rate_limited") return "Gerade zu viele Anfragen. Bitte gleich noch einmal versuchen.";
+    if (c === "refused") return "Dazu kann ich kein Rezept erstellen. Versuch es mit einem anderen Gericht.";
+    if (c === "invalid_json" || c === "empty_completion") return "Die Antwort war unvollständig. Bitte noch einmal versuchen.";
+    if (c === "session_expired") return "Bitte melde dich erneut bei Claude an.";
+    return "Verbindung unterbrochen. Bitte noch einmal versuchen.";
+  }
+  function hardOff(e) { return e && /^(not_granted|sampling_disabled|capability_disabled|not_declared|capability_removed)$/.test(e.code); }
+
+  function wishes() {
+    var t = [];
+    t.push("Personen: " + form.serv);
+    t.push("Unverträglichkeiten, die NICHT vorkommen dürfen (auch nicht versteckt): " + (form.allergies.length ? form.allergies.map(function (a) { return LABEL[a]; }).join(", ") : "keine"));
+    t.push("Ernährungswünsche: " + (form.diets.length ? form.diets.join(", ") : "keine"));
+    t.push("Maximale Gesamtzeit: " + (form.time ? form.time + " Minuten" : "egal"));
+    return t.join("\n");
+  }
+
+  /* ---------- Suche ---------- */
+  function search() {
+    var q = ($("q").value || "").trim();
+    if (!q) { status("Gib ein Gericht oder eine Zutat ein.", "warn"); $("q").focus(); return; }
+    form.q = q; save();
+    if (ctl) ctl.abort();
+    if (sample) return aiSuggest(q);
+    localSuggest(q);
+  }
+
+  function localSuggest(q, note) {
+    var words = q.toLowerCase().split(/[^a-zäöüß]+/).filter(function (w) { return w.length > 2; });
+    var hits = LIB.map(function (r) {
+      var hay = (r.name + " " + r.tags + " " + r.zutaten.map(function (z) { return z.name; }).join(" ")).toLowerCase();
+      var score = 0;
+      words.forEach(function (w) { if (hay.indexOf(w) > -1) score += 2; else if (w.length > 4 && hay.indexOf(w.slice(0, -2)) > -1) score += 1; });
+      var bad = conflicts(r).length;
+      if (form.diets.indexOf("vegan") > -1 && !r.vegan) bad++;
+      if (form.diets.indexOf("vegetarisch") > -1 && !r.vegetarisch) bad++;
+      var total = r.zeit.vorbereitung + r.zeit.kochen + r.zeit.ruhe;
+      if (form.time && total > +form.time) bad++;
+      return { r: r, score: score - bad * 0.5, bad: bad };
+    }).sort(function (a, b) { return b.score - a.score; });
+    var any = hits[0].score > 0;
+    renderSuggestions(hits.map(function (h) {
+      var r = h.r;
+      return { name: r.name, beschreibung: r.beschreibung, minuten: r.zeit.vorbereitung + r.zeit.kochen + r.zeit.ruhe, schwierigkeit: r.schwierigkeit,
+        passt: h.bad ? "passt nicht ganz zu deinen Angaben" : (h.score > 0 ? "passt zu deiner Suche" : "aus der Sammlung"), farben: r.farben, _lib: r };
+    }));
+    status(esc(note || "") + (note ? " " : "") + (any ? "Treffer aus der eingebauten Sammlung." : "Kein direkter Treffer in der eingebauten Sammlung. Hier alles, was sie enthält."));
+  }
+
+  function aiSuggest(q) {
+    ctl = new AbortController();
+    var my = ctl;
+    $("go").disabled = true;
+    busy("Claude sucht passende Gerichte …", true);
+    var prompt =
+      "Du bist ein Sternekoch und berätst Hobbyköche auf Deutsch.\n" +
+      "Der Nutzer sucht: \"" + q.replace(/"/g, "'") + "\"\n" + wishes() + "\n\n" +
+      "Schlage 4 passende, klar unterschiedliche Gerichte vor, die alle Vorgaben einhalten. " +
+      "Nennt der Nutzer ein konkretes Gericht, ist Vorschlag 1 genau dieses Gericht (an die Vorgaben angepasst), die anderen sind Varianten oder verwandte Gerichte. " +
+      "Nennt er Zutaten oder eine Stimmung, wähle Gerichte, die dazu passen.\n" +
+      "Ist die Eingabe kein Essen oder Getränk, gib eine leere Liste zurück und erkläre es in \"hinweis\".\n\n" +
+      "Antworte nur mit JSON in genau dieser Form:\n" +
+      "{\"vorschlaege\":[{\"name\":\"Gerichtname\",\"beschreibung\":\"ein appetitlicher Satz, max. 20 Wörter\",\"minuten\":30,\"schwierigkeit\":1,\"passt\":\"warum es passt, max. 6 Wörter\",\"farben\":[\"#c23a1e\",\"#e9b468\",\"#3f7a33\"]}],\"hinweis\":\"\"}\n" +
+      "schwierigkeit: 1 einfach, 2 mittel, 3 anspruchsvoll. farben: die drei Hauptfarben des fertigen Gerichts als Hex.";
+    sample.json(prompt, { signal: my.signal, modelTier: "quick", onText: function (u) { var b = $("busyBar"); if (b) b.style.width = Math.min(95, u.text.length / 9) + "%"; } })
+      .then(function (res) {
+        if (my !== ctl) return;
+        var list = res && Array.isArray(res.vorschlaege) ? res.vorschlaege.slice(0, 6) : [];
+        if (!list.length) { status(esc((res && res.hinweis) || "Dazu habe ich nichts Passendes gefunden. Versuch es mit einem Gericht oder einer Zutat."), "warn"); $("sugg").hidden = true; return; }
+        status("");
+        renderSuggestions(list);
+        $("sugg").scrollIntoView({ behavior: "smooth", block: "start" });
+      })
+      .catch(function (e) {
+        if (my !== ctl) return;
+        if (e && e.code === "cancelled") { status("Suche abgebrochen."); return; }
+        if (hardOff(e)) { sample = null; setMode(); localSuggest(q, errText(e)); return; }
+        status(esc(errText(e)) + '<button type="button" class="btnlink" id="retry">Erneut</button>', "warn");
+        $("retry").onclick = search;
+      })
+      .finally(function () { if (my === ctl) $("go").disabled = false; });
+  }
+
+  var suggestions = [];
+  function renderSuggestions(list) {
+    suggestions = list;
+    $("slist").innerHTML = list.map(function (s, i) {
+      var d = Math.max(1, Math.min(3, Math.round(num(s.schwierigkeit, 1))));
+      return '<li><button type="button" class="scard" data-i="' + i + '">' +
+        '<canvas width="128" height="128" data-i="' + i + '" aria-hidden="true"></canvas>' +
+        '<span style="min-width:0"><b>' + esc(s.name) + '</b><span class="d">' + esc(s.beschreibung) + '</span>' +
+        '<span class="meta"><span>' + Math.round(num(s.minuten, 0)) + " Min</span><span>" + ["einfach", "mittel", "anspruchsvoll"][d - 1] + "</span>" +
+        (s.passt ? '<span class="why">' + esc(s.passt) + "</span>" : "") + "</span></span>" +
+        '<span class="arr" aria-hidden="true">›</span></button></li>';
+    }).join("");
+    $("slist").querySelectorAll("canvas").forEach(function (c) { drawPlate(c, suggestions[+c.getAttribute("data-i")].farben, suggestions[+c.getAttribute("data-i")].name, true); });
+    $("sugg").hidden = false;
+  }
+  $("slist").addEventListener("click", function (e) {
+    var b = e.target.closest(".scard"); if (!b) return;
+    $("slist").querySelectorAll(".scard").forEach(function (x) { x.removeAttribute("aria-current"); });
+    b.setAttribute("aria-current", "true");
+    var s = suggestions[+b.getAttribute("data-i")];
+    if (s._lib) { show(JSON.parse(JSON.stringify(s._lib)), form.serv); return; }
+    aiRecipe(s);
+  });
+
+  /* ---------- Rezept von Claude ---------- */
+  function aiRecipe(s) {
+    if (ctl) ctl.abort();
+    ctl = new AbortController();
+    var my = ctl;
+    busy("Claude schreibt das Rezept für „" + s.name + "“ …", true);
+    $("status").scrollIntoView({ behavior: "smooth", block: "center" });
+    var prompt =
+      "Du bist ein Sternekoch und schreibst alltagstaugliche Rezepte für Hobbyköche auf Deutsch.\n" +
+      "Erstelle ein vollständiges Rezept für: \"" + String(s.name).replace(/"/g, "'") + "\" (" + String(s.beschreibung || "").replace(/"/g, "'") + ")\n" +
+      wishes() + "\n\n" +
+      "Regeln:\n" +
+      "- Nur metrische Mengen. Erlaubte Einheiten: g, ml, EL, TL, Prise, Stück, Zehe, Dose, Bund, Handvoll, Scheibe. Keine Tassen.\n" +
+      "- menge ist eine Zahl für die genannte Personenzahl, oder null bei \"nach Geschmack\".\n" +
+      "- Bei Stück-Zutaten mit eigener Mehrzahl gib name_plural an (z. B. Ei/Eier).\n" +
+      "- Zutaten, die eine der ausgeschlossenen Unverträglichkeiten enthalten, kommen nicht vor; nimm Ersatz und erkläre ihn im hinweis.\n" +
+      "- Markiere bei jeder Zutat die enthaltenen Allergene mit diesen Codes: gluten, laktose, milcheiweiss, ei, nuesse, erdnuesse, soja, fisch, krebstiere, weichtiere, sellerie, senf, sesam, lupine, sulfite, histamin, fructose. Milchprodukte bekommen milcheiweiss und, falls zutreffend, laktose.\n" +
+      "- In den Schritten keine Mengen nennen (die Liste wird umgerechnet). Ein Arbeitsschritt pro Eintrag, mit Temperaturen.\n" +
+      "- hinweise: 2 bis 4 kurze Hinweise zu Allergenen, versteckten Allergenen beim Einkauf und Austauschmöglichkeiten.\n\n" +
+      "Antworte nur mit JSON in genau dieser Form:\n" +
+      "{\"name\":\"\",\"beschreibung\":\"zwei appetitliche Sätze\",\"zeit\":{\"vorbereitung\":10,\"kochen\":20,\"ruhe\":0},\"portionen\":" + form.serv + ",\"schwierigkeit\":1," +
+      "\"zutaten\":[{\"menge\":200,\"einheit\":\"g\",\"name\":\"\",\"name_plural\":\"\",\"hinweis\":\"\",\"allergene\":[\"gluten\"]}]," +
+      "\"schritte\":[{\"titel\":\"kurz\",\"text\":\"\",\"minuten\":5}],\"naehrwerte\":{\"kcal\":500,\"eiweiss\":20,\"fett\":15,\"kohlenhydrate\":60,\"ballaststoffe\":5}," +
+      "\"hinweise\":[{\"titel\":\"\",\"text\":\"\"}],\"farben\":[\"#hex\",\"#hex\",\"#hex\"]}";
+    sample.json(prompt, { signal: my.signal, onText: function (u) {
+      var b = $("busyBar"), t = $("busyTxt");
+      if (b) b.style.width = Math.min(96, u.text.length / 30) + "%";
+      if (t && u.text.length > 50) t.textContent = "Rezept wird geschrieben …";
+    } })
+      .then(function (r) {
+        if (my !== ctl) return;
+        r = clean(r, s);
+        if (!r) { status("Die Antwort war unvollständig. Bitte noch einmal antippen.", "warn"); return; }
+        status("");
+        show(r, r.portionen);
+      })
+      .catch(function (e) {
+        if (my !== ctl) return;
+        if (e && e.code === "cancelled") { status("Abgebrochen."); return; }
+        if (hardOff(e)) { sample = null; setMode(); }
+        status(esc(errText(e)), "warn");
+      });
+  }
+
+  function clean(r, s) {
+    if (!r || typeof r !== "object" || !Array.isArray(r.zutaten) || !Array.isArray(r.schritte) || !r.zutaten.length) return null;
+    var z = r.zeit || {};
+    return {
+      name: String(r.name || s.name), beschreibung: String(r.beschreibung || s.beschreibung || ""),
+      zeit: { vorbereitung: num(z.vorbereitung, 0), kochen: num(z.kochen, 0), ruhe: num(z.ruhe, 0) },
+      portionen: Math.max(1, Math.round(num(r.portionen, form.serv))) || form.serv,
+      schwierigkeit: Math.max(1, Math.min(3, Math.round(num(r.schwierigkeit, 1)))),
+      zutaten: r.zutaten.slice(0, 40).map(function (i) {
+        return { menge: i.menge == null || i.menge === "" ? null : num(i.menge, null), einheit: String(i.einheit || ""), name: String(i.name || ""),
+          name_plural: i.name_plural ? String(i.name_plural) : "", hinweis: i.hinweis ? String(i.hinweis) : "",
+          allergene: Array.isArray(i.allergene) ? i.allergene.map(function (a) { return String(a).toLowerCase(); }) : [] };
+      }).filter(function (i) { return i.name; }),
+      schritte: r.schritte.slice(0, 20).map(function (t) { return { titel: String(t.titel || ""), text: String(t.text || ""), minuten: num(t.minuten, 0) }; }),
+      naehrwerte: r.naehrwerte || null,
+      hinweise: Array.isArray(r.hinweise) ? r.hinweise.slice(0, 6).map(function (h) { return { titel: String(h.titel || ""), text: String(h.text || "") }; }) : [],
+      farben: Array.isArray(r.farben) ? r.farben : s.farben, ki: true
+    };
+  }
+
+  /* ---------- Mengen umrechnen ---------- */
+  var FR = { 0.25: "¼", 0.5: "½", 0.75: "¾" };
+  var UPL = { Zehe: "Zehen", Dose: "Dosen", Prise: "Prisen", Scheibe: "Scheiben", Packung: "Packungen", Stange: "Stangen", Knolle: "Knollen", Becher: "Becher", Zweig: "Zweige" };
+  function frac(v, step) {
+    var r = Math.round(v / step) * step; if (r < step) r = step;
+    var w = Math.floor(r + 1e-9), rest = Math.round((r - w) * 100) / 100;
+    return { txt: rest ? (w ? w : "") + (FR[rest] || "," + String(rest).slice(2)) : String(w), val: r };
+  }
+  function amount(z, f) {
+    if (z.menge == null) return null;
+    var u = z.einheit.trim(), v = z.menge * f;
+    if (/^kg$/i.test(u)) { u = "g"; v *= 1000; }
+    if (/^l$/i.test(u)) { u = "ml"; v *= 1000; }
+    if (u === "g" || u === "ml") {
+      var r = v >= 100 ? Math.round(v / 10) * 10 : v >= 20 ? Math.round(v / 5) * 5 : Math.max(1, Math.round(v));
+      if (r >= 1000) return { txt: String(Math.round(r / 100) / 10).replace(".", ",") + (u === "g" ? " kg" : " l"), val: r };
+      return { txt: r + " " + u, val: r };
+    }
+    var fr = frac(v, u === "EL" || u === "TL" ? 0.25 : u === "Prise" ? 1 : 0.5);
+    var unit = u === "Stück" ? "" : (fr.val > 1 && UPL[u] ? UPL[u] : u);
+    return { txt: fr.txt + (unit ? " " + unit : ""), val: fr.val };
+  }
+  function conflicts(r) {
+    var out = [];
+    r.zutaten.forEach(function (z) { (z.allergene || []).forEach(function (a) { if (form.allergies.indexOf(a) > -1 && out.indexOf(z.name) < 0) out.push(z.name + " (" + (LABEL[a] || a) + ")"); }); });
+    return out;
+  }
+
+  /* ---------- Rezept anzeigen ---------- */
+  var ICON = {
+    clock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M9.5 2.5h5"/></svg>',
+    people: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.4 3-5.4 6-5.4s5.4 2 6 5.4"/><circle cx="17" cy="9" r="2.4"/><path d="M16.5 14.4c2.4.2 4 1.8 4.5 4.6"/></svg>',
+    hat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 14.5a4 4 0 0 1 1.2-7.8 5 5 0 0 1 9.6 0A4 4 0 0 1 18 14.5V20H6z"/><path d="M6 17h12"/></svg>',
+    warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2.5 20h19z"/><path d="M12 10v4.5M12 17.3v.2"/></svg>'
+  };
+
+  function show(r, serv, quiet) {
+    cur = r; curServ = Math.max(1, Math.min(12, serv || r.portionen)); done = {};
+    var t = r.zeit, total = t.vorbereitung + t.kochen + t.ruhe, d = r.schwierigkeit;
+    var cf = conflicts(r);
+    var all = {};
+    r.zutaten.forEach(function (z) { (z.allergene || []).forEach(function (a) { all[a] = 1; }); });
+    var allList = Object.keys(all).map(function (a) { return LABEL[a] || a; });
+    var n = r.naehrwerte;
+    $("rec").innerHTML =
+      '<canvas class="hero" id="hero" role="img" aria-label="Gemalter Teller in den Farben des Gerichts ' + esc(r.name) + '"></canvas>' +
+      '<div class="rbody">' +
+        "<header>" +
+          '<p class="eyebrow">' + (r.ki ? "Von Claude erstellt" : "Aus der Sammlung") + "</p>" +
+          '<h2 class="title" id="rTitle">' + esc(r.name) + "</h2>" +
+          '<p class="lede">' + esc(r.beschreibung) + "</p>" +
+          '<div class="facts" role="list">' +
+            '<div class="fact" role="listitem">' + ICON.clock + "<b>" + total + " Min</b><span>Zeit</span></div>" +
+            '<div class="fact" role="listitem">' + ICON.people + '<b id="rServFact">' + curServ + "</b><span>Portionen</span></div>" +
+            '<div class="fact" role="listitem">' + ICON.hat + "<b>" + ["Einfach", "Mittel", "Profi"][d - 1] + '</b><span class="dots" aria-label="Schwierigkeit ' + d + ' von 3"><i class="on"></i><i' + (d > 1 ? ' class="on"' : "") + "></i><i" + (d > 2 ? ' class="on"' : "") + "></i></span></div>" +
+          "</div>" +
+          '<p class="timeline">Vorbereitung ' + t.vorbereitung + " Min · Kochen " + t.kochen + " Min · Ruhezeit " + t.ruhe + " Min</p>" +
+        "</header>" +
+        (cf.length ? '<div class="alert" role="alert">Achtung: Enthält trotz deiner Auswahl ' + esc(cf.join(", ")) + ". Bitte ersetzen oder ein anderes Gericht wählen.</div>" : "") +
+        "<section>" +
+          '<div class="sec-head"><h3>Zutaten</h3>' +
+            '<div class="stepper" role="group" aria-label="Portionen anpassen"><button type="button" id="rMinus" aria-label="Eine Portion weniger">−</button>' +
+            '<output id="rServ" aria-live="polite"></output><button type="button" id="rPlus" aria-label="Eine Portion mehr">+</button></div>' +
+          "</div>" +
+          '<ul class="ings" id="rIngs"></ul>' +
+        "</section>" +
+        '<section class="allergy"><h3>' + ICON.warn + "Hinweise zu Unverträglichkeiten</h3>" +
+          "<dl>" +
+            "<div><dt>Enthaltene Allergene</dt><dd>" + (allList.length ? esc(allList.join(", ")) : "Keine der Hauptallergene markiert.") + "</dd></div>" +
+            (r.hinweise || []).map(function (h) { return "<div><dt>" + esc(h.titel) + "</dt><dd>" + esc(h.text) + "</dd></div>"; }).join("") +
+          "</dl>" +
+          '<p class="eu">Kennzeichnung angelehnt an die 14 Hauptallergene der EU' + (r.ki ? ". Von Claude erstellt, daher ohne Gewähr" : ", ohne Gewähr") + ". Im Zweifel die Packung prüfen.</p>" +
+        "</section>" +
+        "<section>" +
+          '<div class="sec-head"><h3>Zubereitung</h3></div>' +
+          '<ol class="steps" id="rSteps">' + r.schritte.map(function (s, k) {
+            return '<li><button type="button" class="step" data-k="' + k + '" aria-pressed="false"><span class="n">' + (k + 1) + '</span><span class="t">' +
+              (s.titel ? "<strong>" + esc(s.titel) + "</strong>" : "") + esc(s.text) + (s.minuten ? '<br><span class="time">' + s.minuten + " Min</span>" : "") + "</span></button></li>";
+          }).join("") + "</ol>" +
+          '<p class="hint">Tippe einen Schritt an, um ihn abzuhaken.</p>' +
+        "</section>" +
+        (n ? "<section>" +
+          '<div class="sec-head"><h3>Nährwerte pro Portion</h3></div>' +
+          '<div class="nutri"><div><b>≈ ' + Math.round(num(n.kcal, 0)) + "</b><span>kcal</span></div><div><b>" + Math.round(num(n.eiweiss, 0)) + " g</b><span>Eiweiß</span></div>" +
+          "<div><b>" + Math.round(num(n.fett, 0)) + " g</b><span>Fett</span></div><div><b>" + Math.round(num(n.kohlenhydrate, 0)) + " g</b><span>Kohlenhydrate</span></div>" +
+          "<div><b>" + Math.round(num(n.ballaststoffe, 0)) + " g</b><span>Ballaststoffe</span></div></div>" +
+          '<p class="hint">Grobe Schätzung, gleich für jede Portionszahl.</p></section>' : "") +
+        '<p class="foot">Bild: gemalter Teller in den Hauptfarben des Gerichts.</p>' +
+      "</div>";
+    $("rec").hidden = false;
+    renderIngs();
+    $("rMinus").onclick = function () { if (curServ > 1) { curServ--; renderIngs(); save(); } };
+    $("rPlus").onclick = function () { if (curServ < 12) { curServ++; renderIngs(); save(); } };
+    $("rSteps").addEventListener("click", function (e) {
+      var b = e.target.closest(".step"); if (!b) return;
+      var k = b.getAttribute("data-k"); done[k] = !done[k]; b.setAttribute("aria-pressed", !!done[k]);
+    });
+    drawPlate($("hero"), r.farben, r.name, false);
+    save();
+    if (!quiet) $("rec").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function renderIngs() {
+    var r = cur, f = curServ / r.portionen;
+    $("rServ").innerHTML = curServ + (curServ === 1 ? " Portion" : " Portionen") + "<small>" + (curServ === r.portionen ? "Originalrezept" : "umgerechnet") + "</small>";
+    $("rServFact").textContent = curServ;
+    $("rMinus").disabled = curServ <= 1; $("rPlus").disabled = curServ >= 12;
+    $("rIngs").innerHTML = r.zutaten.map(function (z) {
+      var a = amount(z, f);
+      var name = a && a.val > 1 && z.name_plural ? z.name_plural : z.name;
+      var tags = (z.allergene || []).filter(function (x) { return x !== "histamin" && x !== "fructose" || form.allergies.indexOf(x) > -1; }).map(function (x) {
+        return '<span class="tag' + (form.allergies.indexOf(x) > -1 ? " bad" : "") + '">' + esc(LABEL[x] || x) + "</span>";
+      }).join("");
+      return '<li><span class="qty' + (a ? "" : " none") + '">' + (a ? esc(a.txt) : "etwas") + '</span><span class="iname">' + esc(name) + tags +
+        (z.hinweis ? '<br><span class="note">' + esc(z.hinweis) + "</span>" : "") + "</span></li>";
+    }).join("");
+  }
+
+  /* ---------- Gemalter Teller ---------- */
+  function hash(s) { var h = 2166136261; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+  function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+  function shade(h, k) {
+    var n = parseInt(h.slice(1), 16), r = n >> 16, g = n >> 8 & 255, b = n & 255;
+    function c(x) { return Math.max(0, Math.min(255, Math.round(k < 0 ? x * (1 + k) : x + (255 - x) * k))); }
+    return "rgb(" + c(r) + "," + c(g) + "," + c(b) + ")";
+  }
+  function drawPlate(cv, farben, name, small) {
+    var cols = [hex((farben || [])[0], "#c9502a"), hex((farben || [])[1], "#e8c27a"), hex((farben || [])[2], "#4f8a3a")];
+    var dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    var W = small ? 64 : (cv.clientWidth || 560), H = small ? 64 : (cv.clientHeight || 350);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    var ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var r = rng(hash(name || "x")), i;
+    var bg = ctx.createLinearGradient(0, 0, W, H); bg.addColorStop(0, "#5b4033"); bg.addColorStop(1, "#2c1d17");
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    if (!small) for (i = 0; i < 50; i++) {
+      var y0 = r() * H * 1.3 - H * .15; ctx.strokeStyle = "rgba(" + (r() > .5 ? "20,10,5" : "130,90,60") + "," + (.05 + r() * .1) + ")";
+      ctx.lineWidth = .6 + r() * 2; ctx.beginPath(); ctx.moveTo(-5, y0); ctx.bezierCurveTo(W * .3, y0 + (r() - .5) * 24, W * .7, y0 + (r() - .5) * 24, W + 5, y0 + W * .1); ctx.stroke();
+    }
+    var cx = W / 2, cy = H * (small ? .5 : .53), R = Math.min(W, H) * (small ? .5 : .44);
+    ctx.save(); ctx.shadowColor = "rgba(0,0,0,.5)"; ctx.shadowBlur = R * .2; ctx.shadowOffsetY = R * .06;
+    var pg = ctx.createRadialGradient(cx - R * .3, cy - R * .3, R * .1, cx, cy, R);
+    pg.addColorStop(0, "#fffdf9"); pg.addColorStop(.85, "#efe7de"); pg.addColorStop(1, "#d8cbbd");
+    ctx.fillStyle = pg; ctx.beginPath(); ctx.arc(cx, cy, R, 0, 7); ctx.fill(); ctx.restore();
+    ctx.strokeStyle = "rgba(120,90,70,.18)"; ctx.lineWidth = Math.max(1, R * .02); ctx.beginPath(); ctx.arc(cx, cy, R * .74, 0, 7); ctx.stroke();
+    var F = R * .7;
+    var fg = ctx.createRadialGradient(cx - F * .2, cy - F * .25, F * .1, cx, cy, F);
+    fg.addColorStop(0, shade(cols[0], .2)); fg.addColorStop(.7, cols[0]); fg.addColorStop(1, shade(cols[0], -.3));
+    ctx.fillStyle = fg; ctx.beginPath();
+    for (i = 0; i <= 24; i++) { var a = i / 24 * Math.PI * 2, rr = F * (.9 + r() * .1); if (i) ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr); else ctx.moveTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr); }
+    ctx.closePath(); ctx.fill();
+    var cnt = small ? 14 : 34;
+    for (i = 0; i < cnt; i++) {
+      var ga = r() * 6.3, gd = Math.sqrt(r()) * F * .78, gx = cx + Math.cos(ga) * gd, gy = cy + Math.sin(ga) * gd, gr = F * (.07 + r() * .07);
+      ctx.save(); ctx.translate(gx, gy); ctx.rotate(r() * 6.3);
+      ctx.fillStyle = "rgba(40,10,0,.28)"; ctx.beginPath(); ctx.ellipse(gr * .1, gr * .25, gr, gr * .75, 0, 0, 7); ctx.fill();
+      var g = ctx.createRadialGradient(-gr * .35, -gr * .3, gr * .1, 0, 0, gr);
+      g.addColorStop(0, shade(cols[1], .35)); g.addColorStop(1, shade(cols[1], -.25));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, 0, gr, gr * .74, 0, 0, 7); ctx.fill();
+      ctx.restore();
+    }
+    for (i = 0; i < (small ? 6 : 14); i++) {
+      var la = r() * 6.3, ld = Math.sqrt(r()) * F * .7, L = F * (.07 + r() * .05);
+      ctx.save(); ctx.translate(cx + Math.cos(la) * ld, cy + Math.sin(la) * ld); ctx.rotate(r() * 6.3);
+      ctx.fillStyle = r() > .4 ? cols[2] : shade(cols[2], .25);
+      ctx.beginPath(); ctx.moveTo(0, -L); ctx.quadraticCurveTo(L * .7, 0, 0, L); ctx.quadraticCurveTo(-L * .7, 0, 0, -L); ctx.fill();
+      ctx.restore();
+    }
+    ctx.fillStyle = "rgba(30,15,10,.7)";
+    for (i = 0; i < (small ? 20 : 90); i++) { var ea = r() * 6.3, ed = Math.sqrt(r()) * F; ctx.beginPath(); ctx.arc(cx + Math.cos(ea) * ed, cy + Math.sin(ea) * ed, .4 + r() * (small ? .5 : 1), 0, 7); ctx.fill(); }
+    var gl = ctx.createRadialGradient(cx - R * .4, cy - R * .45, 0, cx - R * .4, cy - R * .45, R * .8);
+    gl.addColorStop(0, "rgba(255,245,230,.22)"); gl.addColorStop(1, "rgba(255,245,230,0)");
+    ctx.fillStyle = gl; ctx.fillRect(0, 0, W, H);
+  }
+  var rt;
+  window.addEventListener("resize", function () { clearTimeout(rt); rt = setTimeout(function () { var h = $("hero"); if (h && cur) drawPlate(h, cur.farben, cur.name, false); }, 150); });
+
+  /* ---------- Start ---------- */
+  function setMode() {
+    var m = $("mode");
+    m.textContent = sample ? "Mit Claude" : "Sammlung";
+    m.className = "mode" + (sample ? " ai" : "");
+  }
+  // Startzustand: zuletzt angesehenes Rezept oder das Beispielrezept.
+  show(cur || JSON.parse(JSON.stringify(LIB[0])), cur ? curServ : 4, true);
+  localSuggest(form.q);
+  status("");
+
+  if (window.claude && window.claude.use) {
+    window.claude.use("sample").then(function (s) { sample = s || null; setMode(); }).catch(function () { sample = null; setMode(); });
+  }
+})();
+</script>
