@@ -9,7 +9,7 @@ A fork of "Awesome ChatGPT Prompts": a content repository with no application co
 - `README.md`: one `## Act as …` section per prompt (starting after "Other Prompting Resources"), rendered as a GitHub Pages / Jekyll site (`_config.yml`, `_layouts/default.html`, custom domain in `CNAME`).
 - `prompts.csv`: the same prompts as `"act","prompt"` rows. This is the machine-readable source (consumed by `scripts/find-prompt` and the upstream Hugging Face dataset).
 
-`rezepte/` holds fork-specific additions in German: standalone recipe pages (`tomaten-gnocchi-pfanne.html`, `rezeptfinder.html`) and a reworked recipe prompt (`sternekoch-prompt.md`). Jekyll copies the HTML files unchanged because they have no front matter.
+`AIWorkspace/01 Rezeptfinder/` holds the fork-specific "Rezeptfinder" project in German: standalone recipe pages (`tomaten-gnocchi-pfanne.html`, `rezeptfinder.html`) and a reworked recipe prompt (`sternekoch-prompt.md`). The folder name contains a space, so quote paths in shell commands. Jekyll copies the HTML files unchanged because they have no front matter.
 
 ## Adding or editing a prompt
 
@@ -33,12 +33,14 @@ find . -name "*.csv" -exec csvclean -n -u 2 {} +   # must print "No errors."
 grep -n "[[:space:]]$" prompts.csv                  # must print nothing
 ```
 
-## Recipe pages (`rezepte/`)
+## Recipe pages (`AIWorkspace/01 Rezeptfinder/`)
 
 - The HTML files were written as claude.ai Artifacts. They have no `<html>/<head>/<body>` tags because the Artifact publisher wraps them in a skeleton. Keep that shape when editing and republishing.
 - Each page is self-contained: inline CSS/JS, Google Fonts only, no external images. The dish images are drawn on `<canvas>` with a seeded RNG.
 - Colors are CSS tokens on `:root` with dark-mode overrides (`prefers-color-scheme` and `[data-theme]`).
 - `rezeptfinder.html` uses the Artifact runtime capability `sample` (`await claude.use("sample")`) to ask Claude for suggestions and full recipes as JSON. Without that capability it falls back to the built-in `LIB` recipe array.
-- `rezeptfinder.html` also declares the `mcp` capability for the viewer's Notion connector (`notion-search`, `notion-create-pages`). "Ins Rezepte Buch speichern" first checks for a duplicate title, then creates a page in the owner's "Rezepte Buch" data source (`BOOK_DS`, status "Als nächstes ausprobieren"). The page body is Markdown built by `notionMarkdown()` from the scaled amounts currently shown. It always ends with a `## Quelle` section (original link, or "Von Claude erstellt" plus a Chefkoch comparison search). Allergens are split by `groupAllergens()` into EU-14 allergens and intolerances (Laktose, Histamin, Fructose). An optional photo URL becomes the Notion cover, and the recipe's `emoji` becomes the page icon.
+- `rezeptfinder.html` also declares the `mcp` capability for the viewer's Notion connector (`notion-search`, `notion-create-pages`). "Ins Rezepte Buch speichern" first checks for a duplicate title, then creates a page in the owner's "Rezepte Buch" data source (`BOOK_DS`, status "Als nächstes ausprobieren"). The page body is Markdown built by `notionMarkdown()` from the scaled amounts currently shown. It always ends with a `## Quelle` section (original link, or "Von Claude erstellt" plus a Chefkoch comparison search). Allergens are split by `groupAllergens()` into EU-14 allergens (milk products are named "Laktose", or "Milcheiweiß" when no lactose is present; never "Milch") and intolerances (Histamin, Fructose). An optional photo URL becomes the Notion cover, and the recipe's `emoji` becomes the page icon.
+- "Meine Rezepte": every recipe the viewer opens is added by `addToBook()` and listed at the bottom, grouped by `KATS` (Vorspeisen, Pasta, Fleisch, Fisch, Vegetarisch, Vegan, Dessert, Backen/Kuchen). The category comes from Claude's `kategorie` field, else `guessKat()` keyword rules. Storage is the `db` capability in the viewer's private `data/users/<id>` collection (needs `user`), mirrored to `localStorage` as a fallback.
+- There is no platform-search link section any more (removed on request). Recipe import from pasted text is still there.
 - Recipe data uses one schema across the built-in `LIB` and Claude's output: `zutaten[{menge, einheit, name, name_plural, hinweis, allergene[]}]`, `schritte`, `naehrwerte`, `hinweise`, `farben`. Ingredient amounts are scaled by `amount()`. Allergen codes such as `gluten`, `laktose`, `milcheiweiss`, `ei` and `nuesse` are shared between the form chips, the prompt and the conflict check.
-- Quick smoke test: the pages render as plain local files in Playwright/Chromium (`file://…/rezepte/<page>.html`). To exercise `rezeptfinder.html` without Claude, stub `window.claude.use` before the page loads.
+- Quick smoke test: the pages render as plain local files in Playwright/Chromium (`file://…/AIWorkspace/01 Rezeptfinder/<page>.html`). To exercise `rezeptfinder.html` without Claude, stub `window.claude.use` (`sample`, `mcp`, `db`, `user`) before the page loads.

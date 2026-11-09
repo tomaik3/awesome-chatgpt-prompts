@@ -169,17 +169,6 @@ select {
 .foot { font-size: 12.5px; color: var(--muted); margin: 0; }
 .foot a, .src a { color: var(--tomato); font-weight: 600; }
 .sub { margin: -6px 0 0; font-size: 14px; color: var(--muted); }
-.web { display: grid; gap: 12px; }
-.web h2 { font-size: 1.45rem; font-variation-settings: "opsz" 48; }
-.plist { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.plist a {
-  display: grid; gap: 1px; padding: 12px 14px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--sheet);
-  color: var(--ink); text-decoration: none; min-width: 0;
-}
-.plist a:hover { border-color: var(--tomato); }
-.plist a b { font-family: var(--display); font-weight: 800; font-size: 1.05rem; }
-.plist a span { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
-.plist a:focus-visible { outline: 3px solid var(--tomato); outline-offset: 2px; }
 .import { background: var(--sheet); border-radius: 24px; padding: 18px; box-shadow: var(--shadow); display: grid; gap: 12px; }
 .import h3 { font-size: 1.2rem; }
 .import ol { margin: 0; padding-left: 20px; font-size: 14.5px; color: var(--muted); display: grid; gap: 2px; }
@@ -209,6 +198,21 @@ select {
   font: 14.5px var(--body); padding: 0 12px;
 }
 .coverin:focus { outline: none; border-color: var(--tomato); box-shadow: 0 0 0 3px var(--tomato-soft); }
+.book { display: grid; gap: 14px; }
+.book h2 { font-size: 1.45rem; font-variation-settings: "opsz" 48; }
+.kat { display: grid; gap: 8px; }
+.kat h3 { font-size: 1.1rem; display: flex; align-items: baseline; gap: 8px; }
+.kat h3 span { font: 600 13px var(--body); color: var(--muted); font-variant-numeric: tabular-nums; }
+.bitem { position: relative; }
+.bitem .scard { padding-right: 52px; grid-template-columns: 64px minmax(0, 1fr); }
+.bdel {
+  position: absolute; top: 50%; right: 8px; margin-top: -20px; width: 40px; height: 40px; border-radius: 50%;
+  border: 0; background: transparent; color: var(--muted); font: 600 20px/1 var(--body); cursor: pointer;
+}
+.bdel:hover { background: var(--chip); color: var(--tomato); }
+.bdel.confirm { width: auto; padding: 0 12px; border-radius: 999px; background: var(--tomato); color: var(--on-accent); font-size: 13px; }
+.bdel:focus-visible { outline: 3px solid var(--tomato); outline-offset: 2px; }
+.empty { border: 1.5px dashed var(--line); border-radius: 18px; padding: 18px; color: var(--muted); font-size: 15px; }
 .saverow { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
@@ -276,12 +280,6 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
     <ul class="slist" id="slist"></ul>
   </section>
 
-  <section class="web" aria-labelledby="hWeb">
-    <h2 id="hWeb">Auf Rezeptplattformen suchen</h2>
-    <p class="sub" id="webSub">Öffnet die Suche in einem neuen Tab.</p>
-    <ul class="plist" id="plist"></ul>
-  </section>
-
   <form class="import" id="imp" autocomplete="off">
     <h3>Rezept von einer Plattform übernehmen</h3>
     <ol>
@@ -297,6 +295,12 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
   </form>
 
   <article class="rec" id="rec" aria-labelledby="rTitle" hidden></article>
+
+  <section class="book" id="book" aria-labelledby="hBook">
+    <h2 id="hBook">Meine Rezepte</h2>
+    <p class="sub" id="bookSub">Jedes Rezept, das du öffnest, landet hier, sortiert nach Kategorie.</p>
+    <div id="bookList"></div>
+  </section>
 </div>
 
 <script>
@@ -517,7 +521,6 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
     if (!q) { status("Gib ein Gericht oder eine Zutat ein.", "warn"); $("q").focus(); return; }
     form.q = q; save();
     if (ctl) ctl.abort();
-    renderWeb(q);
     if (sample) return aiSuggest(q);
     localSuggest(q);
   }
@@ -566,7 +569,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
         var list = res && Array.isArray(res.vorschlaege) ? res.vorschlaege.slice(0, 6) : [];
         if (!list.length) { status(esc((res && res.hinweis) || "Dazu habe ich nichts Passendes gefunden. Versuch es mit einem Gericht oder einer Zutat."), "warn"); $("sugg").hidden = true; return; }
         status("");
-        $("suggSrc").textContent = "Ideen von Claude, passend zu deinen Angaben. Echte Rezepte findest du unten auf den Plattformen.";
+        $("suggSrc").textContent = "Ideen von Claude, passend zu deinen Angaben. Tippe einen Vorschlag an, um das ganze Rezept zu bekommen.";
         renderSuggestions(list);
         $("sugg").scrollIntoView({ behavior: "smooth", block: "start" });
       })
@@ -621,6 +624,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
       "- Bei Stück-Zutaten mit eigener Mehrzahl gib name_plural an (z. B. Ei/Eier).\n" +
       "- Zutaten, die eine der ausgeschlossenen Unverträglichkeiten enthalten, kommen nicht vor; nimm Ersatz und erkläre ihn im hinweis.\n" +
       "- Markiere bei jeder Zutat die enthaltenen Allergene mit diesen Codes: gluten, laktose, milcheiweiss, ei, nuesse, erdnuesse, soja, fisch, krebstiere, weichtiere, sellerie, senf, sesam, lupine, sulfite, histamin, fructose. Milchprodukte bekommen milcheiweiss und, falls zutreffend, laktose.\n" +
+      "- kategorie: genau eine von Vorspeisen, Pasta, Fleisch, Fisch, Vegetarisch, Vegan, Dessert, Backen/Kuchen.\n" +
       "- In den Schritten keine Mengen nennen (die Liste wird umgerechnet). Ein Arbeitsschritt pro Eintrag, mit Temperaturen.\n" +
       "- Einheit nicht im Namen wiederholen: einheit „Zehe“ mit name „Knoblauch“, nicht „Knoblauchzehen“.\n" +
 
@@ -629,7 +633,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
       "{\"name\":\"\",\"beschreibung\":\"zwei appetitliche Sätze\",\"zeit\":{\"vorbereitung\":10,\"kochen\":20,\"ruhe\":0},\"portionen\":" + form.serv + ",\"schwierigkeit\":1," +
       "\"zutaten\":[{\"menge\":200,\"einheit\":\"g\",\"name\":\"\",\"name_plural\":\"\",\"hinweis\":\"\",\"allergene\":[\"gluten\"]}]," +
       "\"schritte\":[{\"titel\":\"kurz\",\"text\":\"\",\"minuten\":5}],\"naehrwerte\":{\"kcal\":500,\"eiweiss\":20,\"fett\":15,\"kohlenhydrate\":60,\"ballaststoffe\":5}," +
-      "\"hinweise\":[{\"titel\":\"\",\"text\":\"\"}],\"farben\":[\"#hex\",\"#hex\",\"#hex\"],\"emoji\":\"ein passendes Essens-Emoji\"}";
+      "\"hinweise\":[{\"titel\":\"\",\"text\":\"\"}],\"farben\":[\"#hex\",\"#hex\",\"#hex\"],\"emoji\":\"ein passendes Essens-Emoji\",\"kategorie\":\"Pasta\"}";
     sample.json(prompt, { signal: my.signal, onText: function (u) {
       var b = $("busyBar"), t = $("busyTxt");
       if (b) b.style.width = Math.min(96, u.text.length / 30) + "%";
@@ -668,7 +672,8 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
       hinweise: Array.isArray(r.hinweise) ? r.hinweise.slice(0, 6).map(function (h) { return { titel: String(h.titel || ""), text: String(h.text || "") }; }) : [],
       farben: Array.isArray(r.farben) ? r.farben : s.farben, ki: true,
       quelle: /^https?:\/\/[^\s"<>]+$/i.test(s.quelle || "") ? s.quelle : "", quelleName: String(r.quelle_name || s.quelleName || ""),
-      emoji: emojiOk(r.emoji) ? r.emoji : ""
+      emoji: emojiOk(r.emoji) ? r.emoji : "",
+      kategorie: KATS.indexOf(r.kategorie) > -1 ? r.kategorie : ""
     };
   }
 
@@ -704,20 +709,21 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
 
   /* ---------- Allergene, Quelle, Emoji ---------- */
   // EU-14-Hauptallergene getrennt von Unverträglichkeiten (Laktose, Histamin, Fructose).
-  var EU = ["gluten", "milch", "ei", "nuesse", "erdnuesse", "soja", "fisch", "krebstiere", "weichtiere", "sellerie", "senf", "sesam", "lupine", "sulfite"];
-  var INTOL = ["laktose", "histamin", "fructose"];
+  var EU = ["gluten", "laktose", "milcheiweiss", "ei", "nuesse", "erdnuesse", "soja", "fisch", "krebstiere", "weichtiere", "sellerie", "senf", "sesam", "lupine", "sulfite"];
+  var INTOL = ["histamin", "fructose"];
   function groupAllergens(r) {
     var eu = [], intol = [];
     r.zutaten.forEach(function (z) {
       (z.allergene || []).forEach(function (a) {
-        var k = a === "milcheiweiss" || a === "laktose" ? "milch" : a;
-        if (EU.indexOf(k) > -1 && eu.indexOf(k) < 0) eu.push(k);
+        if (EU.indexOf(a) > -1 && eu.indexOf(a) < 0) eu.push(a);
         if (INTOL.indexOf(a) > -1 && intol.indexOf(a) < 0) intol.push(a);
       });
     });
+    // Milchprodukte als Laktose benennen; Milcheiweiß nur, wenn keine Laktose drin ist (z. B. gereifter Käse).
+    if (eu.indexOf("laktose") > -1) eu = eu.filter(function (a) { return a !== "milcheiweiss"; });
     eu.sort(function (a, b) { return EU.indexOf(a) - EU.indexOf(b); });
     intol.sort(function (a, b) { return INTOL.indexOf(a) - INTOL.indexOf(b); });
-    var lab = function (k) { return k === "milch" ? "Milch" : (LABEL[k] || k); };
+    var lab = function (k) { return LABEL[k] || k; };
     return { eu: eu.map(lab), intol: intol.map(lab) };
   }
   function compareUrl(r) { return "https://www.chefkoch.de/rs/s0/" + encodeURIComponent(r.name) + "/Rezepte.html"; }
@@ -728,8 +734,8 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
     return { label: "Rezeptfinder-Sammlung", url: "", kind: "lib" };
   }
   function emojiOk(e) { return typeof e === "string" && e.length > 0 && e.length <= 8 && !/[A-Za-z0-9<>"'&\s]/.test(e); }
-  var LIB_EMOJI = ["🍅", "🍛", "🥔", "🥞"];
-  LIB.forEach(function (r, i) { r.emoji = LIB_EMOJI[i]; });
+  var LIB_EMOJI = ["🍅", "🍛", "🥔", "🥞"], LIB_KAT = ["Pasta", "Vegan", "Vegetarisch", "Dessert"];
+  LIB.forEach(function (r, i) { r.emoji = LIB_EMOJI[i]; r.kategorie = LIB_KAT[i]; });
 
   /* ---------- Rezept anzeigen ---------- */
   var ICON = {
@@ -748,7 +754,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
       '<canvas class="hero" id="hero" role="img" aria-label="Gemalter Teller in den Farben des Gerichts ' + esc(r.name) + '"></canvas>' +
       '<div class="rbody">' +
         "<header>" +
-          '<p class="eyebrow">' + (r.importiert ? "Übernommen" + (srcName(r) ? " von " + esc(srcName(r)) : "") : r.ki ? "Von Claude erstellt" : "Aus der Sammlung") + "</p>" +
+          '<p class="eyebrow">' + esc(guessKat(r)) + " · " + (r.importiert ? "Übernommen" + (srcName(r) ? " von " + esc(srcName(r)) : "") : r.ki ? "Von Claude erstellt" : "Aus der Sammlung") + "</p>" +
           '<h2 class="title" id="rTitle">' + esc(r.name) + "</h2>" +
           '<p class="lede">' + esc(r.beschreibung) + "</p>" +
           (function () {
@@ -810,7 +816,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
     drawPlate($("hero"), r.farben, r.name, false);
     renderSave();
     save();
-    if (!quiet) $("rec").scrollIntoView({ behavior: "smooth", block: "start" });
+    if (!quiet) { addToBook(r); $("rec").scrollIntoView({ behavior: "smooth", block: "start" }); }
   }
 
   function renderIngs() {
@@ -889,31 +895,6 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
   window.addEventListener("resize", function () { clearTimeout(rt); rt = setTimeout(function () { var h = $("hero"); if (h && cur) drawPlate(h, cur.farben, cur.name, false); }, 150); });
 
   /* ---------- Start ---------- */
-  /* ---------- Plattform-Suche ---------- */
-  var PLATFORMS = [
-    { name: "Chefkoch", host: "chefkoch.de", direct: function (q) { return "https://www.chefkoch.de/rs/s0/" + encodeURIComponent(q) + "/Rezepte.html"; } },
-    { name: "Lecker", host: "lecker.de" },
-    { name: "Kitchen Stories", host: "kitchenstories.com" },
-    { name: "EAT SMARTER", host: "eatsmarter.de" },
-    { name: "Essen & Trinken", host: "essen-und-trinken.de" },
-    { name: "Kochbar", host: "kochbar.de" }
-  ];
-  var TERMS = { gluten: "glutenfrei", laktose: "laktosefrei", milcheiweiss: "milchfrei", ei: "ohne Ei", nuesse: "ohne Nüsse", erdnuesse: "ohne Erdnüsse", soja: "ohne Soja",
-    vegetarisch: "vegetarisch", vegan: "vegan", "ohne Zucker": "zuckerfrei", "low carb": "low carb", kinderfreundlich: "für Kinder" };
-  function webQuery(q) {
-    var extra = [];
-    form.allergies.concat(form.diets).forEach(function (k) { if (TERMS[k] && extra.indexOf(TERMS[k]) < 0) extra.push(TERMS[k]); });
-    if (form.diets.indexOf("vegan") > -1) extra = extra.filter(function (t) { return t !== "vegetarisch" && t !== "laktosefrei" && t !== "milchfrei" && t !== "ohne Ei"; });
-    return (q + " " + extra.join(" ")).trim();
-  }
-  function renderWeb(q) {
-    var wq = webQuery(q || form.q || "");
-    $("webSub").textContent = "Suche nach „" + wq + "“. Öffnet sich in einem neuen Tab.";
-    $("plist").innerHTML = PLATFORMS.map(function (p) {
-      var url = p.direct ? p.direct(wq) : "https://www.google.com/search?q=" + encodeURIComponent("site:" + p.host + " " + wq + " Rezept");
-      return '<li><a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer"><b>' + esc(p.name) + "</b><span>" + esc(p.host) + " ›</span></a></li>";
-    }).join("");
-  }
   function srcName(r) {
     if (r.quelleName) return r.quelleName;
     var m = /^https?:\/\/(?:www\.)?([^\/]+)/i.exec(r.quelle || "");
@@ -938,6 +919,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
       "- Zutaten, Mengen und Arbeitsschritte originalgetreu übernehmen. Nichts dazuerfinden, nichts weglassen. Werbung, Kommentare, Bewertungen und Navigation ignorieren.\n" +
       "- Mengen in g, ml, EL, TL, Prise, Stück, Zehe, Dose, Bund, Handvoll oder Scheibe angeben. Tassen und Unzen in metrische Werte umrechnen. Ohne Mengenangabe: menge null.\n" +
       "- portionen = Portionen laut Original (sonst 4). Mengen gelten für diese Portionen.\n" +
+      "- kategorie: genau eine von Vorspeisen, Pasta, Fleisch, Fisch, Vegetarisch, Vegan, Dessert, Backen/Kuchen.\n" +
       "- Mengen aus den Schritttexten entfernen, weil die Liste umgerechnet wird.\n" +
       "- Einheit nicht im Namen wiederholen: einheit „Zehe“ mit name „Knoblauch“, nicht „Knoblauchzehen“.\n" +
 
@@ -951,7 +933,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
       "{\"name\":\"\",\"beschreibung\":\"zwei Sätze\",\"zeit\":{\"vorbereitung\":10,\"kochen\":20,\"ruhe\":0},\"portionen\":4,\"schwierigkeit\":1," +
       "\"zutaten\":[{\"menge\":200,\"einheit\":\"g\",\"name\":\"\",\"name_plural\":\"\",\"hinweis\":\"\",\"allergene\":[]}]," +
       "\"schritte\":[{\"titel\":\"kurz\",\"text\":\"\",\"minuten\":5}],\"naehrwerte\":{\"kcal\":0,\"eiweiss\":0,\"fett\":0,\"kohlenhydrate\":0,\"ballaststoffe\":0}," +
-      "\"hinweise\":[{\"titel\":\"\",\"text\":\"\"}],\"farben\":[\"#hex\",\"#hex\",\"#hex\"],\"emoji\":\"ein passendes Essens-Emoji\",\"quelle_name\":\"\"}\n\n" +
+      "\"hinweise\":[{\"titel\":\"\",\"text\":\"\"}],\"farben\":[\"#hex\",\"#hex\",\"#hex\"],\"emoji\":\"ein passendes Essens-Emoji\",\"kategorie\":\"Pasta\",\"quelle_name\":\"\"}\n\n" +
       "<rezepttext>\n" + text.slice(0, 30000) + "\n</rezepttext>";
     sample.json(prompt, { signal: my.signal, onText: function (u) { var b = $("busyBar"); if (b) b.style.width = Math.min(96, u.text.length / 30) + "%"; } })
       .then(function (res) {
@@ -1099,6 +1081,117 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
     });
   }
 
+  /* ---------- Meine Rezepte (nach Kategorie) ---------- */
+  var KATS = ["Vorspeisen", "Pasta", "Fleisch", "Fisch", "Vegetarisch", "Vegan", "Dessert", "Backen/Kuchen"];
+  var KAT_WORDS = [
+    ["Backen/Kuchen", /kuchen|torte|muffin|brot|brötchen|keks|plätzchen|cookie|strudel|tarte|gebäck|waffel/],
+    ["Dessert", /dessert|pudding|mousse|tiramisu|panna|creme brulee|crème|eis\b|sorbet|kompott|pfannkuchen|crêpe|crepe|kaiserschmarrn/],
+    ["Fisch", /fisch|lachs|thunfisch|forelle|kabeljau|dorsch|garnele|shrimp|scampi|muschel|tintenfisch|zander|hering|sardine/],
+    ["Fleisch", /fleisch|hähnchen|huhn|hühn|pute|rind|schwein|hack|speck|schinken|wurst|lamm|kalb|wild|hirsch|reh|gulasch|braten|schnitzel|steak|ente|bacon/],
+    ["Pasta", /pasta|spaghetti|nudel|lasagne|gnocchi|penne|tagliatelle|ravioli|tortellini|maccheroni|linguine|spätzle/],
+    ["Vorspeisen", /vorspeise|suppe|salat|bruschetta|carpaccio|antipasti|dip|häppchen/]
+  ];
+  function guessKat(r) {
+    if (KATS.indexOf(r.kategorie) > -1) return r.kategorie;
+    var hay = (r.name + " " + r.zutaten.map(function (z) { return z.name; }).join(" ")).toLowerCase();
+    var nameOnly = String(r.name).toLowerCase();
+    for (var i = 0; i < KAT_WORDS.length; i++) if (KAT_WORDS[i][1].test(nameOnly)) return KAT_WORDS[i][0];
+    for (i = 0; i < KAT_WORDS.length; i++) if (KAT_WORDS[i][0] === "Fisch" || KAT_WORDS[i][0] === "Fleisch") if (KAT_WORDS[i][1].test(hay)) return KAT_WORDS[i][0];
+    var animal = r.zutaten.some(function (z) { return (z.allergene || []).some(function (a) { return a === "laktose" || a === "milcheiweiss" || a === "ei"; }) || /honig|butter|käse|sahne|joghurt|quark/i.test(z.name); });
+    return r.vegan || !animal ? "Vegan" : "Vegetarisch";
+  }
+  function slug(n) {
+    var t = String(n || "").toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss");
+    return t.replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "rezept";
+  }
+  var book = {}, bookDb = null, bookUid = null, armed = null;
+  try { book = JSON.parse(localStorage.getItem("rezeptfinder-buch") || "{}") || {}; } catch (e) { book = {}; }
+  function keepLocal() { try { localStorage.setItem("rezeptfinder-buch", JSON.stringify(book)); } catch (e) {} }
+  function bookCol() { return bookDb && bookUid ? bookDb.collection("data/users/" + bookUid) : null; }
+
+  function addToBook(r) {
+    var rec = JSON.parse(JSON.stringify(r));
+    rec.kategorie = guessKat(r);
+    rec.serv = curServ;
+    rec.savedAt = Date.now();
+    var id = slug(r.name);
+    book[id] = rec;
+    keepLocal(); renderBook();
+    var col = bookCol();
+    if (col) col.doc(id).set(rec).catch(function (e) { bookNote(e); });
+  }
+  function removeFromBook(id) {
+    delete book[id]; keepLocal(); renderBook();
+    var col = bookCol();
+    if (col) col.doc(id).delete().catch(function (e) { bookNote(e); });
+  }
+  function bookNote(e) {
+    var c = e && e.code;
+    $("bookSub").textContent = c === "quota_exceeded" ? "Die Sammlung ist voll. Lösche alte Rezepte, damit neue dazukommen."
+      : "Die Sammlung ist gerade nur auf diesem Gerät gespeichert.";
+  }
+  function renderBook() {
+    var ids = Object.keys(book);
+    if (!ids.length) {
+      $("bookList").innerHTML = '<p class="empty">Noch keine Rezepte. Such ein Gericht und öffne ein Rezept, dann erscheint es hier in seiner Kategorie.</p>';
+      return;
+    }
+    var groups = {};
+    ids.forEach(function (id) { var k = guessKat(book[id]); (groups[k] = groups[k] || []).push(id); });
+    $("bookList").innerHTML = KATS.filter(function (k) { return groups[k]; }).map(function (k) {
+      var list = groups[k].sort(function (a, b) { return (book[b].savedAt || 0) - (book[a].savedAt || 0); });
+      return '<div class="kat"><h3>' + esc(k) + "<span>" + list.length + "</span></h3>" + '<ul class="slist">' + list.map(function (id) {
+        var r = book[id], t = r.zeit || {}, total = num(t.vorbereitung, 0) + num(t.kochen, 0) + num(t.ruhe, 0);
+        var g = groupAllergens(r);
+        return '<li class="bitem"><button type="button" class="scard" data-open="' + esc(id) + '">' +
+          '<canvas width="128" height="128" data-b="' + esc(id) + '" aria-hidden="true"></canvas>' +
+          '<span style="min-width:0"><b>' + (r.emoji ? esc(r.emoji) + " " : "") + esc(r.name) + "</b>" +
+          '<span class="meta"><span>' + total + " Min</span><span>" + ["einfach", "mittel", "anspruchsvoll"][(r.schwierigkeit || 1) - 1] + "</span>" +
+          (g.eu.length ? '<span>' + esc(g.eu.join(", ")) + "</span>" : '<span class="why">ohne Hauptallergene</span>') + "</span></span></button>" +
+          '<button type="button" class="bdel" data-del="' + esc(id) + '" aria-label="' + esc(r.name) + ' aus Meine Rezepte entfernen">×</button></li>';
+      }).join("") + "</ul></div>";
+    }).join("");
+    $("bookList").querySelectorAll("canvas[data-b]").forEach(function (c) { var r = book[c.getAttribute("data-b")]; drawPlate(c, r.farben, r.name, true); });
+  }
+  $("bookList").addEventListener("click", function (e) {
+    var del = e.target.closest(".bdel");
+    if (del) {
+      var id = del.getAttribute("data-del");
+      if (armed === id) { armed = null; removeFromBook(id); return; }
+      armed = id; renderBook();
+      var b = $("bookList").querySelector('.bdel[data-del="' + id + '"]');
+      if (b) { b.classList.add("confirm"); b.textContent = "Entfernen?"; b.focus(); }
+      return;
+    }
+    var open = e.target.closest("[data-open]");
+    if (open) { armed = null; var r = book[open.getAttribute("data-open")]; if (r) show(JSON.parse(JSON.stringify(r)), r.serv || r.portionen); }
+  });
+
+  function startBook() {
+    if (!(window.claude && window.claude.use)) return;
+    Promise.all([window.claude.use("db"), window.claude.use("user")]).then(function (res) {
+      var db = res[0], user = res[1];
+      if (!db || !user) return;
+      return user.id().then(function (id) {
+        if (!id) return;
+        bookDb = db; bookUid = id;
+        var first = true, timer = setTimeout(function () { $("bookSub").textContent = "Die gespeicherte Sammlung lädt noch. Angezeigt wird der Stand auf diesem Gerät."; }, 10000);
+        bookCol().onSnapshot(function (snap) {
+          if (!snap.metadata.fromCache) clearTimeout(timer);
+          var remote = {};
+          snap.docs.forEach(function (d) { if (d.exists) remote[d.id] = d.data(); });
+          if (first && !snap.metadata.fromCache) {
+            first = false;
+            // Einmalig: Rezepte, die bisher nur auf diesem Gerät lagen, in die Sammlung übernehmen.
+            Object.keys(book).forEach(function (k) { if (!remote[k]) { remote[k] = book[k]; bookCol().doc(k).set(JSON.parse(JSON.stringify(book[k]))).catch(function () {}); } });
+            $("bookSub").textContent = "Jedes Rezept, das du öffnest, landet hier, sortiert nach Kategorie.";
+          }
+          book = JSON.parse(JSON.stringify(remote)); keepLocal(); renderBook();
+        }, function (e) { clearTimeout(timer); bookDb = null; bookNote(e); });
+      });
+    }).catch(function () {});
+  }
+
   function setMode() {
     var m = $("mode");
     m.textContent = sample ? "Mit Claude" : "Sammlung";
@@ -1107,8 +1200,9 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
   // Startzustand: zuletzt angesehenes Rezept oder das Beispielrezept.
   show(cur || JSON.parse(JSON.stringify(LIB[0])), cur ? curServ : 4, true);
   localSuggest(form.q);
-  renderWeb(form.q);
   status("");
+  renderBook();
+  startBook();
 
   if (window.claude && window.claude.use) {
     window.claude.use("sample").then(function (s) { sample = s || null; setMode(); }).catch(function () { sample = null; setMode(); });
