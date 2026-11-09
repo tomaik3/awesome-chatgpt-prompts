@@ -204,6 +204,11 @@ select {
 .savemsg { font-size: 14px; color: var(--muted); margin: 0; }
 .savemsg.warn { color: var(--tomato); font-weight: 600; }
 .savemsg a { color: var(--tomato); font-weight: 600; }
+.coverin {
+  width: 100%; min-height: 44px; border-radius: 12px; border: 1.5px solid var(--line); background: var(--bg); color: var(--ink);
+  font: 14.5px var(--body); padding: 0 12px;
+}
+.coverin:focus { outline: none; border-color: var(--tomato); box-shadow: 0 0 0 3px var(--tomato-soft); }
 .saverow { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
@@ -617,12 +622,14 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
       "- Zutaten, die eine der ausgeschlossenen Unverträglichkeiten enthalten, kommen nicht vor; nimm Ersatz und erkläre ihn im hinweis.\n" +
       "- Markiere bei jeder Zutat die enthaltenen Allergene mit diesen Codes: gluten, laktose, milcheiweiss, ei, nuesse, erdnuesse, soja, fisch, krebstiere, weichtiere, sellerie, senf, sesam, lupine, sulfite, histamin, fructose. Milchprodukte bekommen milcheiweiss und, falls zutreffend, laktose.\n" +
       "- In den Schritten keine Mengen nennen (die Liste wird umgerechnet). Ein Arbeitsschritt pro Eintrag, mit Temperaturen.\n" +
+      "- Einheit nicht im Namen wiederholen: einheit „Zehe“ mit name „Knoblauch“, nicht „Knoblauchzehen“.\n" +
+
       "- hinweise: 2 bis 4 kurze Hinweise zu Allergenen, versteckten Allergenen beim Einkauf und Austauschmöglichkeiten.\n\n" +
       "Antworte nur mit JSON in genau dieser Form:\n" +
       "{\"name\":\"\",\"beschreibung\":\"zwei appetitliche Sätze\",\"zeit\":{\"vorbereitung\":10,\"kochen\":20,\"ruhe\":0},\"portionen\":" + form.serv + ",\"schwierigkeit\":1," +
       "\"zutaten\":[{\"menge\":200,\"einheit\":\"g\",\"name\":\"\",\"name_plural\":\"\",\"hinweis\":\"\",\"allergene\":[\"gluten\"]}]," +
       "\"schritte\":[{\"titel\":\"kurz\",\"text\":\"\",\"minuten\":5}],\"naehrwerte\":{\"kcal\":500,\"eiweiss\":20,\"fett\":15,\"kohlenhydrate\":60,\"ballaststoffe\":5}," +
-      "\"hinweise\":[{\"titel\":\"\",\"text\":\"\"}],\"farben\":[\"#hex\",\"#hex\",\"#hex\"]}";
+      "\"hinweise\":[{\"titel\":\"\",\"text\":\"\"}],\"farben\":[\"#hex\",\"#hex\",\"#hex\"],\"emoji\":\"ein passendes Essens-Emoji\"}";
     sample.json(prompt, { signal: my.signal, onText: function (u) {
       var b = $("busyBar"), t = $("busyTxt");
       if (b) b.style.width = Math.min(96, u.text.length / 30) + "%";
@@ -660,7 +667,8 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
       naehrwerte: r.naehrwerte || null,
       hinweise: Array.isArray(r.hinweise) ? r.hinweise.slice(0, 6).map(function (h) { return { titel: String(h.titel || ""), text: String(h.text || "") }; }) : [],
       farben: Array.isArray(r.farben) ? r.farben : s.farben, ki: true,
-      quelle: /^https?:\/\/[^\s"<>]+$/i.test(s.quelle || "") ? s.quelle : "", quelleName: String(r.quelle_name || s.quelleName || "")
+      quelle: /^https?:\/\/[^\s"<>]+$/i.test(s.quelle || "") ? s.quelle : "", quelleName: String(r.quelle_name || s.quelleName || ""),
+      emoji: emojiOk(r.emoji) ? r.emoji : ""
     };
   }
 
@@ -684,6 +692,8 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
     }
     var fr = frac(v, u === "EL" || u === "TL" ? 0.25 : u === "Prise" ? 1 : 0.5);
     var unit = u === "Stück" ? "" : (fr.val > 1 && UPL[u] ? UPL[u] : u);
+    // Einheit weglassen, wenn sie schon im Namen steckt (Zehe + Knoblauchzehen).
+    if (u.length > 2 && (String(z.name) + " " + String(z.name_plural || "")).toLowerCase().indexOf(u.toLowerCase()) > -1) unit = "";
     return { txt: fr.txt + (unit ? " " + unit : ""), val: fr.val };
   }
   function conflicts(r) {
@@ -691,6 +701,35 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
     r.zutaten.forEach(function (z) { (z.allergene || []).forEach(function (a) { if (form.allergies.indexOf(a) > -1 && out.indexOf(z.name) < 0) out.push(z.name + " (" + (LABEL[a] || a) + ")"); }); });
     return out;
   }
+
+  /* ---------- Allergene, Quelle, Emoji ---------- */
+  // EU-14-Hauptallergene getrennt von Unverträglichkeiten (Laktose, Histamin, Fructose).
+  var EU = ["gluten", "milch", "ei", "nuesse", "erdnuesse", "soja", "fisch", "krebstiere", "weichtiere", "sellerie", "senf", "sesam", "lupine", "sulfite"];
+  var INTOL = ["laktose", "histamin", "fructose"];
+  function groupAllergens(r) {
+    var eu = [], intol = [];
+    r.zutaten.forEach(function (z) {
+      (z.allergene || []).forEach(function (a) {
+        var k = a === "milcheiweiss" || a === "laktose" ? "milch" : a;
+        if (EU.indexOf(k) > -1 && eu.indexOf(k) < 0) eu.push(k);
+        if (INTOL.indexOf(a) > -1 && intol.indexOf(a) < 0) intol.push(a);
+      });
+    });
+    eu.sort(function (a, b) { return EU.indexOf(a) - EU.indexOf(b); });
+    intol.sort(function (a, b) { return INTOL.indexOf(a) - INTOL.indexOf(b); });
+    var lab = function (k) { return k === "milch" ? "Milch" : (LABEL[k] || k); };
+    return { eu: eu.map(lab), intol: intol.map(lab) };
+  }
+  function compareUrl(r) { return "https://www.chefkoch.de/rs/s0/" + encodeURIComponent(r.name) + "/Rezepte.html"; }
+  function sourceInfo(r) {
+    if (r.quelle) return { label: srcName(r) || r.quelle, url: r.quelle, kind: "original" };
+    if (r.importiert) return { label: (srcName(r) || "kopierter Text") + " (ohne Link übernommen)", url: "", kind: "import" };
+    if (r.ki) return { label: "Von Claude erstellt, kein Originalrezept", url: "", kind: "ki" };
+    return { label: "Rezeptfinder-Sammlung", url: "", kind: "lib" };
+  }
+  function emojiOk(e) { return typeof e === "string" && e.length > 0 && e.length <= 8 && !/[A-Za-z0-9<>"'&\s]/.test(e); }
+  var LIB_EMOJI = ["🍅", "🍛", "🥔", "🥞"];
+  LIB.forEach(function (r, i) { r.emoji = LIB_EMOJI[i]; });
 
   /* ---------- Rezept anzeigen ---------- */
   var ICON = {
@@ -704,9 +743,6 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
     cur = r; curServ = Math.max(1, Math.min(12, serv || r.portionen)); done = {};
     var t = r.zeit, total = t.vorbereitung + t.kochen + t.ruhe, d = r.schwierigkeit;
     var cf = conflicts(r);
-    var all = {};
-    r.zutaten.forEach(function (z) { (z.allergene || []).forEach(function (a) { all[a] = 1; }); });
-    var allList = Object.keys(all).map(function (a) { return LABEL[a] || a; });
     var n = r.naehrwerte;
     $("rec").innerHTML =
       '<canvas class="hero" id="hero" role="img" aria-label="Gemalter Teller in den Farben des Gerichts ' + esc(r.name) + '"></canvas>' +
@@ -715,7 +751,11 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
           '<p class="eyebrow">' + (r.importiert ? "Übernommen" + (srcName(r) ? " von " + esc(srcName(r)) : "") : r.ki ? "Von Claude erstellt" : "Aus der Sammlung") + "</p>" +
           '<h2 class="title" id="rTitle">' + esc(r.name) + "</h2>" +
           '<p class="lede">' + esc(r.beschreibung) + "</p>" +
-          (r.quelle ? '<p class="src">Original: <a href="' + esc(r.quelle) + '" target="_blank" rel="noopener noreferrer">' + esc(srcName(r) || r.quelle) + "</a></p>" : "") +
+          (function () {
+            var si = sourceInfo(r);
+            return '<p class="src">Quelle: ' + (si.url ? '<a href="' + esc(si.url) + '" target="_blank" rel="noopener noreferrer">' + esc(si.label) + "</a>" : esc(si.label)) +
+              (si.kind !== "original" ? ' · <a href="' + esc(compareUrl(r)) + '" target="_blank" rel="noopener noreferrer">Vergleichsrezepte auf Chefkoch</a>' : "") + "</p>";
+          })() +
           '<div class="facts" role="list">' +
             '<div class="fact" role="listitem">' + ICON.clock + "<b>" + total + " Min</b><span>Zeit</span></div>" +
             '<div class="fact" role="listitem">' + ICON.people + '<b id="rServFact">' + curServ + "</b><span>Portionen</span></div>" +
@@ -734,7 +774,11 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
         "</section>" +
         '<section class="allergy"><h3>' + ICON.warn + "Hinweise zu Unverträglichkeiten</h3>" +
           "<dl>" +
-            "<div><dt>Enthaltene Allergene</dt><dd>" + (allList.length ? esc(allList.join(", ")) : "Keine der Hauptallergene markiert.") + "</dd></div>" +
+            (function () {
+              var g = groupAllergens(r);
+              return "<div><dt>Allergene (EU-14)</dt><dd>" + (g.eu.length ? esc(g.eu.join(", ")) : "Keine der 14 Hauptallergene markiert.") + "</dd></div>" +
+                (g.intol.length ? "<div><dt>Wichtig bei Unverträglichkeiten</dt><dd>" + esc(g.intol.join(", ")) + "</dd></div>" : "");
+            })() +
             (r.hinweise || []).map(function (h) { return "<div><dt>" + esc(h.titel) + "</dt><dd>" + esc(h.text) + "</dd></div>"; }).join("") +
           "</dl>" +
           '<p class="eu">Kennzeichnung angelehnt an die 14 Hauptallergene der EU' + (r.ki ? ". Von Claude erstellt, daher ohne Gewähr" : ", ohne Gewähr") + ". Im Zweifel die Packung prüfen.</p>" +
@@ -895,6 +939,8 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
       "- Mengen in g, ml, EL, TL, Prise, Stück, Zehe, Dose, Bund, Handvoll oder Scheibe angeben. Tassen und Unzen in metrische Werte umrechnen. Ohne Mengenangabe: menge null.\n" +
       "- portionen = Portionen laut Original (sonst 4). Mengen gelten für diese Portionen.\n" +
       "- Mengen aus den Schritttexten entfernen, weil die Liste umgerechnet wird.\n" +
+      "- Einheit nicht im Namen wiederholen: einheit „Zehe“ mit name „Knoblauch“, nicht „Knoblauchzehen“.\n" +
+
       "- Zeiten aus dem Original übernehmen, fehlende sinnvoll schätzen. Nährwerte aus dem Original oder grob geschätzt.\n" +
       "- Bei jeder Zutat Allergene mit diesen Codes markieren: gluten, laktose, milcheiweiss, ei, nuesse, erdnuesse, soja, fisch, krebstiere, weichtiere, sellerie, senf, sesam, lupine, sulfite, histamin, fructose.\n" +
       "- Unverträglichkeiten des Nutzers: " + (form.allergies.length ? form.allergies.map(function (a) { return LABEL[a]; }).join(", ") : "keine") +
@@ -905,7 +951,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
       "{\"name\":\"\",\"beschreibung\":\"zwei Sätze\",\"zeit\":{\"vorbereitung\":10,\"kochen\":20,\"ruhe\":0},\"portionen\":4,\"schwierigkeit\":1," +
       "\"zutaten\":[{\"menge\":200,\"einheit\":\"g\",\"name\":\"\",\"name_plural\":\"\",\"hinweis\":\"\",\"allergene\":[]}]," +
       "\"schritte\":[{\"titel\":\"kurz\",\"text\":\"\",\"minuten\":5}],\"naehrwerte\":{\"kcal\":0,\"eiweiss\":0,\"fett\":0,\"kohlenhydrate\":0,\"ballaststoffe\":0}," +
-      "\"hinweise\":[{\"titel\":\"\",\"text\":\"\"}],\"farben\":[\"#hex\",\"#hex\",\"#hex\"],\"quelle_name\":\"\"}\n\n" +
+      "\"hinweise\":[{\"titel\":\"\",\"text\":\"\"}],\"farben\":[\"#hex\",\"#hex\",\"#hex\"],\"emoji\":\"ein passendes Essens-Emoji\",\"quelle_name\":\"\"}\n\n" +
       "<rezepttext>\n" + text.slice(0, 30000) + "\n</rezepttext>";
     sample.json(prompt, { signal: my.signal, onText: function (u) { var b = $("busyBar"); if (b) b.style.width = Math.min(96, u.text.length / 30) + "%"; } })
       .then(function (res) {
@@ -949,8 +995,11 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
       $("saveAgain").onclick = function () { saveToNotion(true); };
       return;
     }
-    box.innerHTML = '<button type="button" class="savebtn" id="saveBtn">' + ICON_SAVE + "Ins Rezepte Buch speichern</button>" +
+    box.innerHTML = '<label class="label" for="coverUrl">Foto-Link fürs Rezeptbuch (optional)</label>' +
+      '<input id="coverUrl" class="coverin" type="url" inputmode="url" placeholder="https://… Bildadresse, z. B. vom Original kopiert" value="' + esc(cur.bild || "") + '">' +
+      '<button type="button" class="savebtn" id="saveBtn">' + ICON_SAVE + "Ins Rezepte Buch speichern</button>" +
       '<p class="savemsg' + (kind === "warn" ? " warn" : "") + '" id="saveMsg">' + (msg || "Legt eine Seite in deinem Notion-Rezeptbuch an, Status „" + esc(STATUS) + "“.") + "</p>";
+    $("coverUrl").oninput = function () { cur.bild = this.value.trim(); };
     $("saveBtn").onclick = function () { saveToNotion(false); };
   }
   function saveMsg(html, kind) {
@@ -964,7 +1013,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
     if (r.beschreibung) L.push(md(r.beschreibung), "");
     L.push("**Zeit:** " + (t.vorbereitung + t.kochen + t.ruhe) + " Min (Vorbereitung " + t.vorbereitung + ", Kochen " + t.kochen + ", Ruhezeit " + t.ruhe + ") · **Portionen:** " + curServ +
       " · **Schwierigkeit:** " + ["einfach", "mittel", "anspruchsvoll"][r.schwierigkeit - 1]);
-    if (r.quelle) L.push("", "**Original:** [" + md(srcName(r) || r.quelle) + "](" + r.quelle + ")");
+
     L.push("", "## Zutaten für " + curServ + (curServ === 1 ? " Portion" : " Portionen"));
     r.zutaten.forEach(function (z) {
       var a = amount(z, f), name = a && a.val > 1 && z.name_plural ? z.name_plural : z.name;
@@ -973,13 +1022,16 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
     });
     L.push("", "## Zubereitung");
     r.schritte.forEach(function (s, i) { L.push((i + 1) + ". " + (s.titel ? "**" + md(s.titel) + ":** " : "") + md(s.text) + (s.minuten ? " (" + s.minuten + " Min)" : "")); });
-    var all = {};
-    r.zutaten.forEach(function (z) { (z.allergene || []).forEach(function (a) { all[LABEL[a] || a] = 1; }); });
-    L.push("", "## Allergene und Hinweise", "- **Enthält:** " + (Object.keys(all).length ? md(Object.keys(all).join(", ")) : "keine markierten Hauptallergene"));
+    var g = groupAllergens(r);
+    L.push("", "## Allergene und Hinweise", "- **Allergene (EU-14):** " + (g.eu.length ? md(g.eu.join(", ")) : "keine der 14 Hauptallergene markiert"));
+    if (g.intol.length) L.push("- **Wichtig bei Unverträglichkeiten:** " + md(g.intol.join(", ")));
     (r.hinweise || []).forEach(function (h) { L.push("- **" + md(h.titel) + ":** " + md(h.text)); });
     var n = r.naehrwerte;
     if (n) L.push("", "## Nährwerte pro Portion (ca.)", Math.round(num(n.kcal, 0)) + " kcal · " + Math.round(num(n.eiweiss, 0)) + " g Eiweiß · " + Math.round(num(n.fett, 0)) + " g Fett · " +
       Math.round(num(n.kohlenhydrate, 0)) + " g Kohlenhydrate · " + Math.round(num(n.ballaststoffe, 0)) + " g Ballaststoffe");
+    var si = sourceInfo(r);
+    L.push("", "## Quelle", "- " + (si.url ? "[" + md(si.label) + "](" + si.url + ")" : md(si.label)));
+    if (si.kind !== "original") L.push("- Vergleichsrezepte: [" + md(r.name) + " auf Chefkoch](" + compareUrl(r) + ")");
     L.push("", "---", "*Angelegt mit dem Rezeptfinder" + (r.ki && !r.importiert ? ", Rezept von Claude erstellt, Angaben ohne Gewähr" : "") + ".*");
     return L.join("\n");
   }
@@ -1030,7 +1082,11 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
       saveMsg("Lege die Seite in Notion an …");
       return mcp.callTool(NOTION, "notion-create-pages", {
         parent: { type: "data_source_id", data_source_id: BOOK_DS },
-        pages: [{ properties: { Name: r.name, Status: STATUS }, icon: "🍽️", content: notionMarkdown(r) }]
+        pages: [(function () {
+          var pg = { properties: { Name: r.name, Status: STATUS }, icon: r.emoji || "🍽️", content: notionMarkdown(r) };
+          if (/^https:\/\/[^\s"<>]+$/i.test(r.bild || "")) pg.cover = r.bild;
+          return pg;
+        })()]
       }).then(function (res) {
         saving = false;
         remember(r.name, findUrl(res && (res.payload || res.content)));
