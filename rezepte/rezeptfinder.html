@@ -192,6 +192,19 @@ select {
 .import textarea:focus, .import input:focus { outline: none; border-color: var(--tomato); box-shadow: 0 0 0 3px var(--tomato-soft); }
 .import .go { background: var(--basil); }
 .src { margin: 8px 0 0; font-size: 14px; color: var(--muted); }
+.save { margin-top: 16px; display: grid; gap: 8px; }
+.savebtn {
+  min-height: 50px; border-radius: 14px; border: 1.5px solid var(--ink); background: var(--ink); color: var(--sheet);
+  font: 700 15.5px var(--body); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; text-decoration: none; padding: 0 16px;
+}
+.savebtn.done { background: var(--basil-soft); border-color: var(--basil); color: var(--basil); }
+.savebtn.ghost { background: transparent; color: var(--ink); }
+.savebtn:disabled { opacity: .6; cursor: progress; }
+.savebtn:focus-visible { outline: 3px solid var(--tomato); outline-offset: 2px; }
+.savemsg { font-size: 14px; color: var(--muted); margin: 0; }
+.savemsg.warn { color: var(--tomato); font-weight: 600; }
+.savemsg a { color: var(--tomato); font-weight: 600; }
+.saverow { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
@@ -709,6 +722,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
             '<div class="fact" role="listitem">' + ICON.hat + "<b>" + ["Einfach", "Mittel", "Profi"][d - 1] + '</b><span class="dots" aria-label="Schwierigkeit ' + d + ' von 3"><i class="on"></i><i' + (d > 1 ? ' class="on"' : "") + "></i><i" + (d > 2 ? ' class="on"' : "") + "></i></span></div>" +
           "</div>" +
           '<p class="timeline">Vorbereitung ' + t.vorbereitung + " Min · Kochen " + t.kochen + " Min · Ruhezeit " + t.ruhe + " Min</p>" +
+          '<div class="save" id="saveBox" hidden></div>' +
         "</header>" +
         (cf.length ? '<div class="alert" role="alert">Achtung: Enthält trotz deiner Auswahl ' + esc(cf.join(", ")) + ". Bitte ersetzen oder ein anderes Gericht wählen.</div>" : "") +
         "<section>" +
@@ -750,6 +764,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
       var k = b.getAttribute("data-k"); done[k] = !done[k]; b.setAttribute("aria-pressed", !!done[k]);
     });
     drawPlate($("hero"), r.farben, r.name, false);
+    renderSave();
     save();
     if (!quiet) $("rec").scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -911,6 +926,123 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
       .finally(function () { $("impGo").disabled = false; });
   });
 
+  /* ---------- Notion: Rezepte Buch ---------- */
+  var NOTION = "Notion";
+  var BOOK_DS = "25b14d48-28ee-81d3-af1f-000be8f2f889";
+  var BOOK_URL = "https://app.notion.com/p/25b14d4828ee80c381fec502954dc17e";
+  var STATUS = "Als nächstes ausprobieren";
+  var mcp = null, saving = false, savedMap = {};
+  try { savedMap = JSON.parse(localStorage.getItem("rezeptfinder-notion") || "{}") || {}; } catch (e) {}
+  function remember(name, url) { savedMap[name] = url || BOOK_URL; try { localStorage.setItem("rezeptfinder-notion", JSON.stringify(savedMap)); } catch (e) {} }
+  function safeUrl(u) { return /^https:\/\/(app\.notion\.com|www\.notion\.so|notion\.so)\//.test(u || "") ? u : BOOK_URL; }
+  var ICON_SAVE = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/></svg>';
+
+  function renderSave(msg, kind) {
+    var box = $("saveBox");
+    if (!box || !cur) return;
+    if (!mcp) { box.hidden = true; return; }
+    box.hidden = false;
+    var url = savedMap[cur.name];
+    if (url) {
+      box.innerHTML = '<a class="savebtn done" href="' + esc(safeUrl(url)) + '" target="_blank" rel="noopener noreferrer">✓ Im Rezepte Buch gespeichert ›</a>' +
+        '<p class="savemsg">Status: ' + esc(STATUS) + '. <button type="button" class="btnlink" id="saveAgain">Noch einmal speichern</button></p>';
+      $("saveAgain").onclick = function () { saveToNotion(true); };
+      return;
+    }
+    box.innerHTML = '<button type="button" class="savebtn" id="saveBtn">' + ICON_SAVE + "Ins Rezepte Buch speichern</button>" +
+      '<p class="savemsg' + (kind === "warn" ? " warn" : "") + '" id="saveMsg">' + (msg || "Legt eine Seite in deinem Notion-Rezeptbuch an, Status „" + esc(STATUS) + "“.") + "</p>";
+    $("saveBtn").onclick = function () { saveToNotion(false); };
+  }
+  function saveMsg(html, kind) {
+    var m = $("saveMsg"); if (!m) return renderSave(html, kind);
+    m.className = "savemsg" + (kind === "warn" ? " warn" : ""); m.innerHTML = html;
+  }
+
+  function md(t) { return String(t == null ? "" : t).replace(/[\r\n]+/g, " ").replace(/([*_`#\[\]<>|~])/g, "\\$1").trim(); }
+  function notionMarkdown(r) {
+    var f = curServ / r.portionen, t = r.zeit, L = [];
+    if (r.beschreibung) L.push(md(r.beschreibung), "");
+    L.push("**Zeit:** " + (t.vorbereitung + t.kochen + t.ruhe) + " Min (Vorbereitung " + t.vorbereitung + ", Kochen " + t.kochen + ", Ruhezeit " + t.ruhe + ") · **Portionen:** " + curServ +
+      " · **Schwierigkeit:** " + ["einfach", "mittel", "anspruchsvoll"][r.schwierigkeit - 1]);
+    if (r.quelle) L.push("", "**Original:** [" + md(srcName(r) || r.quelle) + "](" + r.quelle + ")");
+    L.push("", "## Zutaten für " + curServ + (curServ === 1 ? " Portion" : " Portionen"));
+    r.zutaten.forEach(function (z) {
+      var a = amount(z, f), name = a && a.val > 1 && z.name_plural ? z.name_plural : z.name;
+      var al = (z.allergene || []).filter(function (x) { return x !== "histamin" && x !== "fructose"; }).map(function (x) { return LABEL[x] || x; });
+      L.push("- " + (a ? "**" + md(a.txt) + "** " : "") + md(name) + (z.hinweis ? " (" + md(z.hinweis) + ")" : "") + (al.length ? " · *" + md(al.join(", ")) + "*" : ""));
+    });
+    L.push("", "## Zubereitung");
+    r.schritte.forEach(function (s, i) { L.push((i + 1) + ". " + (s.titel ? "**" + md(s.titel) + ":** " : "") + md(s.text) + (s.minuten ? " (" + s.minuten + " Min)" : "")); });
+    var all = {};
+    r.zutaten.forEach(function (z) { (z.allergene || []).forEach(function (a) { all[LABEL[a] || a] = 1; }); });
+    L.push("", "## Allergene und Hinweise", "- **Enthält:** " + (Object.keys(all).length ? md(Object.keys(all).join(", ")) : "keine markierten Hauptallergene"));
+    (r.hinweise || []).forEach(function (h) { L.push("- **" + md(h.titel) + ":** " + md(h.text)); });
+    var n = r.naehrwerte;
+    if (n) L.push("", "## Nährwerte pro Portion (ca.)", Math.round(num(n.kcal, 0)) + " kcal · " + Math.round(num(n.eiweiss, 0)) + " g Eiweiß · " + Math.round(num(n.fett, 0)) + " g Fett · " +
+      Math.round(num(n.kohlenhydrate, 0)) + " g Kohlenhydrate · " + Math.round(num(n.ballaststoffe, 0)) + " g Ballaststoffe");
+    L.push("", "---", "*Angelegt mit dem Rezeptfinder" + (r.ki && !r.importiert ? ", Rezept von Claude erstellt, Angaben ohne Gewähr" : "") + ".*");
+    return L.join("\n");
+  }
+
+  function mcpErr(e, isWrite) {
+    var c = e && e.code;
+    if (c === "needs_reauth") return "Die Notion-Verbindung ist abgelaufen. Verbinde Notion neu unter claude.ai → Einstellungen → Connectors.";
+    if (c === "server_not_connected" || c === "server_not_found") return "Notion ist nicht verbunden. Füge Notion unter claude.ai → Einstellungen → Connectors hinzu.";
+    if (c === "selection_required") return "Du hast mehrere Notion-Verbindungen. Wähle in claude.ai aus, welche diese Seite nutzen soll.";
+    if (c === "not_in_manifest" || c === "approval_required" || c === "consent_required") return "Der Zugriff auf Notion wurde nicht erlaubt. Tippe erneut auf Speichern und wähle „Erlauben“.";
+    if (c === "blocked_by_policy") return "Deine Organisation erlaubt diesen Notion-Zugriff nicht.";
+    if (c === "tool_error") return "Notion hat das Anlegen abgelehnt. Hast du Zugriff auf das Rezepte Buch? " + esc(String(e.message || "").slice(0, 160));
+    if (isWrite) return 'Unklar, ob die Seite angelegt wurde. Sieh im <a href="' + BOOK_URL + '" target="_blank" rel="noopener noreferrer">Rezepte Buch</a> nach, bevor du es erneut versuchst.';
+    return "Notion antwortet gerade nicht. Bitte gleich noch einmal versuchen.";
+  }
+  function norm(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9äöüß]+/g, " ").trim(); }
+  function findUrl(payload) {
+    var txt = typeof payload === "string" ? payload : JSON.stringify(payload || "");
+    var m = /https:\/\/(?:app\.notion\.com|www\.notion\.so)\/[^\s"'\\)]+/.exec(txt);
+    return m ? m[0] : "";
+  }
+
+  function saveToNotion(force) {
+    if (saving || !cur || !mcp) return;
+    var r = cur;
+    saving = true;
+    var btn = $("saveBtn"); if (btn) btn.disabled = true;
+    saveMsg("Prüfe dein Rezepte Buch …");
+    var check = force ? Promise.resolve(null) : mcp.callTool(NOTION, "notion-search", { query: r.name, data_source_url: "collection://" + BOOK_DS, page_size: 5 }, { cache: false })
+      .then(function (res) {
+        var list = (res && res.payload && Array.isArray(res.payload.results)) ? res.payload.results : [];
+        var hit = list.filter(function (x) { return norm(x.title) === norm(r.name); })[0];
+        return hit || null;
+      }, function (e) {
+        if (e && /^(needs_reauth|server_not_connected|server_not_found|selection_required|not_in_manifest|approval_required|blocked_by_policy|consent_required)$/.test(e.code)) throw e;
+        return null;
+      });
+    check.then(function (hit) {
+      if (hit && cur === r) {
+        saving = false;
+        var box = $("saveBox");
+        box.innerHTML = '<p class="savemsg warn">„' + esc(hit.title) + '“ steht schon in deinem <a href="' + esc(safeUrl(hit.url)) + '" target="_blank" rel="noopener noreferrer">Rezepte Buch</a>.</p>' +
+          '<div class="saverow"><button type="button" class="savebtn ghost" id="dupNo">Abbrechen</button><button type="button" class="savebtn" id="dupYes">Trotzdem anlegen</button></div>';
+        $("dupNo").onclick = function () { renderSave(); };
+        $("dupYes").onclick = function () { saveToNotion(true); };
+        return;
+      }
+      saveMsg("Lege die Seite in Notion an …");
+      return mcp.callTool(NOTION, "notion-create-pages", {
+        parent: { type: "data_source_id", data_source_id: BOOK_DS },
+        pages: [{ properties: { Name: r.name, Status: STATUS }, icon: "🍽️", content: notionMarkdown(r) }]
+      }).then(function (res) {
+        saving = false;
+        remember(r.name, findUrl(res && (res.payload || res.content)));
+        if (cur === r) renderSave();
+      });
+    }).catch(function (e) {
+      saving = false;
+      if (cur !== r) return;
+      renderSave(mcpErr(e, e && e._write !== false), "warn");
+    });
+  }
+
   function setMode() {
     var m = $("mode");
     m.textContent = sample ? "Mit Claude" : "Sammlung";
@@ -924,6 +1056,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
 
   if (window.claude && window.claude.use) {
     window.claude.use("sample").then(function (s) { sample = s || null; setMode(); }).catch(function () { sample = null; setMode(); });
+    window.claude.use("mcp").then(function (m) { mcp = m || null; renderSave(); }).catch(function () { mcp = null; });
   }
 })();
 </script>
