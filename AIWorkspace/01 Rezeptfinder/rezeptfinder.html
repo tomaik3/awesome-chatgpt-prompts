@@ -40,8 +40,6 @@ h1, h2, h3 { font-family: var(--display); font-weight: 800; letter-spacing: -.01
 .brand h1 { font-size: clamp(1.9rem, 8vw, 2.5rem); font-variation-settings: "opsz" 96; }
 .brand h1 em { font-style: normal; color: var(--tomato); }
 .brand p { margin: 0; color: var(--muted); font-size: 14px; }
-.mode { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
-.mode.ai { color: var(--basil); }
 
 /* Suchmaske */
 .form { background: var(--sheet); border-radius: 24px; padding: 18px; box-shadow: var(--shadow); display: grid; gap: 18px; }
@@ -213,7 +211,6 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
       <h1>Rezept<em>finder</em></h1>
       <p>Gericht eingeben, Wünsche wählen, Rezept bekommen.</p>
     </div>
-    <span class="mode" id="mode">Sammlung</span>
   </header>
 
   <form class="form" id="form" autocomplete="off">
@@ -221,7 +218,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
       <label class="label" for="q">Was möchtest du kochen?</label>
       <div class="search">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-        <input id="q" name="q" type="search" enterkeyhint="search" maxlength="160" placeholder="z. B. Lasagne, etwas mit Kürbis, schnelles Curry" value="Cremige Gnocchi">
+        <input id="q" name="q" type="search" enterkeyhint="search" maxlength="160" placeholder="z. B. Lasagne, etwas mit Kürbis, schnelles Curry">
       </div>
       <div class="quick" id="quick" aria-label="Ideen">
         <button type="button">Kürbissuppe</button><button type="button">Linsen-Dal</button><button type="button">Ofengemüse</button><button type="button">Pfannkuchen</button>
@@ -409,7 +406,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
   ];
 
   /* ---------- Zustand ---------- */
-  var form = { q: "Cremige Gnocchi", serv: 4, time: "", allergies: [], diets: [] };
+  var form = { q: "", serv: 4, time: "", allergies: [], diets: [] };
   var cur = null;          // angezeigtes Rezept
   var curServ = 4;
   var done = {};
@@ -443,7 +440,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
   }
   chips($("allergies"), ALLERGIES, "allergies", "");
   chips($("diets"), DIETS, "diets", "diet");
-  $("q").value = form.q; $("time").value = form.time;
+  form.q = ""; $("q").value = ""; $("time").value = form.time;
   function renderFormServ() {
     $("fServ").textContent = form.serv + (form.serv === 1 ? " Person" : " Personen");
     $("fMinus").disabled = form.serv <= 1; $("fPlus").disabled = form.serv >= 12;
@@ -958,6 +955,18 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
     return m ? m[0] : "";
   }
 
+  // Notion-Eigenschaft "Kategorie" (Mehrfachauswahl): Hauptkategorie plus Vegetarisch/Vegan, wenn ohne Fleisch und Fisch.
+  function notionKats(r) {
+    var k = guessKat(r), out = [k];
+    if (k === "Fleisch" || k === "Fisch" || k === "Vegan" || k === "Vegetarisch") return out;
+    var hay = (r.name + " " + r.zutaten.map(function (z) { return z.name; }).join(" ")).toLowerCase();
+    var meat = KAT_WORDS.filter(function (w) { return w[0] === "Fleisch" || w[0] === "Fisch"; }).some(function (w) { return w[1].test(hay); });
+    if (meat) return out;
+    var animal = r.zutaten.some(function (z) { return (z.allergene || []).some(function (a) { return a === "laktose" || a === "milcheiweiss" || a === "ei"; }) || /honig|butter|käse|sahne|joghurt|quark|gelatine/i.test(z.name); });
+    out.push(r.vegan || !animal ? "Vegan" : "Vegetarisch");
+    return out;
+  }
+
   function saveToNotion(force) {
     if (saving || !cur || !mcp) return;
     var r = cur;
@@ -987,7 +996,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
       return mcp.callTool(NOTION, "notion-create-pages", {
         parent: { type: "data_source_id", data_source_id: BOOK_DS },
         pages: [(function () {
-          var pg = { properties: { Name: r.name, Status: STATUS }, icon: r.emoji || "🍽️", content: notionMarkdown(r) };
+          var pg = { properties: { Name: r.name, Status: STATUS, Kategorie: notionKats(r) }, icon: r.emoji || "🍽️", content: notionMarkdown(r) };
           if (/^https:\/\/[^\s"<>]+$/i.test(r.bild || "")) pg.cover = r.bild;
           return pg;
         })()]
@@ -1114,14 +1123,9 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
     }).catch(function () {});
   }
 
-  function setMode() {
-    var m = $("mode");
-    m.textContent = sample ? "Mit Claude" : "Sammlung";
-    m.className = "mode" + (sample ? " ai" : "");
-  }
+  function setMode() {}
   // Startzustand: zuletzt angesehenes Rezept oder das Beispielrezept.
   show(cur || JSON.parse(JSON.stringify(LIB[0])), cur ? curServ : 4, true);
-  localSuggest(form.q);
   status("");
   renderBook();
   startBook();
