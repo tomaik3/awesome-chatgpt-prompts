@@ -9,7 +9,7 @@ Eine stündliche geplante Aufgabe in Claude Code (Cloud) gibt neuen Rezepten ein
 2. Jede Seite abrufen. Seiten mit Cover werden übersprungen.
 3. Für jede Seite ohne Cover drei Farben passend zum Gericht wählen und das Bild erzeugen:
    `node "AIWorkspace/01 Rezeptfinder/tools/cover-bild.js" "<Name>" "#haupt,#stuecke,#garnitur"`
-4. Alle neuen Bilder in einem Commit auf den Branch `rezeptfinder-bilder` pushen.
+4. Alle neuen Bilder in einem Commit auf den Branch `claude/tomaten-gnocchi-recipe-card-h1r75d` pushen.
 5. Cover-URL mit Commit-SHA bilden:
    `https://raw.githubusercontent.com/tomaik3/awesome-chatgpt-prompts/<sha>/AIWorkspace/01%20Rezeptfinder/bilder/<datei>.jpg`.
    Mit `curl` prüfen, dass die URL `200` und `image/jpeg` liefert.
