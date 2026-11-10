@@ -596,7 +596,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
       "- Bei Stück-Zutaten mit eigener Mehrzahl gib name_plural an (z. B. Ei/Eier).\n" +
       "- Zutaten, die eine der ausgeschlossenen Unverträglichkeiten enthalten, kommen nicht vor; nimm Ersatz und erkläre ihn im hinweis.\n" +
       "- Markiere bei jeder Zutat die enthaltenen Allergene mit diesen Codes: gluten, laktose, milcheiweiss, ei, nuesse, erdnuesse, soja, fisch, krebstiere, weichtiere, sellerie, senf, sesam, lupine, sulfite, histamin, fructose. Milchprodukte bekommen milcheiweiss und, falls zutreffend, laktose.\n" +
-      "- kategorie: genau eine von Vorspeisen, Pasta, Fleisch, Fisch, Vegetarisch, Vegan, Dessert, Backen/Kuchen.\n" +
+      "- kategorie: genau eine von Vorspeisen, Pasta, Fleisch, Fisch, Vegetarisch, Vegan, Dessert, Backen/Kuchen. Die Art des Gerichts geht vor der Ernährungsform (Suppe oder Salat = Vorspeisen, Kuchen = Backen/Kuchen).\n" +
       "- In den Schritten keine Mengen nennen (die Liste wird umgerechnet). Ein Arbeitsschritt pro Eintrag, mit Temperaturen.\n" +
       "- Einheit nicht im Namen wiederholen: einheit „Zehe“ mit name „Knoblauch“, nicht „Knoblauchzehen“.\n" +
 
@@ -878,7 +878,9 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
   var BOOK_DS = "25b14d48-28ee-81d3-af1f-000be8f2f889";
   var BOOK_URL = "https://app.notion.com/p/25b14d4828ee80c381fec502954dc17e";
   var STATUS = "Als nächstes ausprobieren";
-  var mcp = null, saving = false, savedMap = {};
+  var mcp = null, saving = false, savedMap = {}, imgDone = {};
+  try { imgDone = JSON.parse(localStorage.getItem("rezeptfinder-notion-bild") || "{}") || {}; } catch (e) {}
+  function rememberImg(name) { imgDone[name] = 1; try { localStorage.setItem("rezeptfinder-notion-bild", JSON.stringify(imgDone)); } catch (e) {} }
   try { savedMap = JSON.parse(localStorage.getItem("rezeptfinder-notion") || "{}") || {}; } catch (e) {}
   function remember(name, url) { savedMap[name] = url || BOOK_URL; try { localStorage.setItem("rezeptfinder-notion", JSON.stringify(savedMap)); } catch (e) {} }
   function safeUrl(u) { return /^https:\/\/(app\.notion\.com|www\.notion\.so|notion\.so)\//.test(u || "") ? u : BOOK_URL; }
@@ -892,8 +894,10 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
     var url = savedMap[cur.name];
     if (url) {
       box.innerHTML = '<a class="savebtn done" href="' + esc(safeUrl(url)) + '" target="_blank" rel="noopener noreferrer">✓ Im Rezepte Buch gespeichert ›</a>' +
-        '<p class="savemsg">Status: ' + esc(STATUS) + '. <button type="button" class="btnlink" id="saveAgain">Noch einmal speichern</button></p>';
+        (imgDone[cur.name] ? "" : '<button type="button" class="savebtn ghost" id="addImg">Bild nachtragen</button>') +
+        '<p class="savemsg' + (kind === "warn" ? " warn" : "") + '" id="saveMsg">' + (msg || "Status: " + esc(STATUS) + ".") + ' <button type="button" class="btnlink" id="saveAgain">Noch einmal speichern</button></p>';
       $("saveAgain").onclick = function () { saveToNotion(true); };
+      if ($("addImg")) $("addImg").onclick = function () { addImageToPage(cur, url === BOOK_URL ? null : url); };
       return;
     }
     box.innerHTML = '<label class="label" for="coverUrl">Foto-Link fürs Rezeptbuch (optional)</label>' +
@@ -967,6 +971,127 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
     return out;
   }
 
+  function zutatenText(r) {
+    var f = curServ / r.portionen;
+    return r.zutaten.map(function (z) {
+      var a = amount(z, f), name = a && a.val > 1 && z.name_plural ? z.name_plural : z.name;
+      return (a ? a.txt + " " : "") + name;
+    }).join(", ").slice(0, 1900);
+  }
+
+  // Zeichnet den Teller als echte SVG-Vektorgrafik (Notion nimmt Text-Dateien wie SVG über notion-create-attachment an).
+  function svgPlate(r) {
+    var W = 800, H = 500, out = [], defs = [], gid = 0, st = [], m = [1, 0, 0, 1, 0, 0], path = [];
+    var ctx = { fillStyle: "#000", strokeStyle: "#000", lineWidth: 1, lineCap: "butt", shadowColor: "", shadowBlur: 0, shadowOffsetY: 0 };
+    function T(x, y) { return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]]; }
+    function f1(v) { return Math.round(v * 10) / 10; }
+    function pt(x, y) { var p = T(x, y); return f1(p[0]) + " " + f1(p[1]); }
+    function scale() { return Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2])); }
+    function grad(kind, a) {
+      var g = { kind: kind, a: a, stops: [], m: m.slice() };
+      g.addColorStop = function (o, c) { g.stops.push([o, c]); };
+      return g;
+    }
+    function paint(v) {
+      if (typeof v === "string") return v;
+      var id = "g" + (gid++), sc = Math.sqrt(Math.abs(v.m[0] * v.m[3] - v.m[1] * v.m[2]));
+      var tp = function (x, y) { return [v.m[0] * x + v.m[2] * y + v.m[4], v.m[1] * x + v.m[3] * y + v.m[5]]; };
+      var stops = v.stops.map(function (s) { return '<stop offset="' + s[0] + '" stop-color="' + s[1] + '"/>'; }).join("");
+      if (v.kind === "l") {
+        var p0 = tp(v.a[0], v.a[1]), p1 = tp(v.a[2], v.a[3]);
+        defs.push('<linearGradient id="' + id + '" gradientUnits="userSpaceOnUse" x1="' + f1(p0[0]) + '" y1="' + f1(p0[1]) + '" x2="' + f1(p1[0]) + '" y2="' + f1(p1[1]) + '">' + stops + "</linearGradient>");
+      } else {
+        var c = tp(v.a[3], v.a[4]), fo = tp(v.a[0], v.a[1]);
+        defs.push('<radialGradient id="' + id + '" gradientUnits="userSpaceOnUse" cx="' + f1(c[0]) + '" cy="' + f1(c[1]) + '" r="' + f1(v.a[5] * sc) + '" fx="' + f1(fo[0]) + '" fy="' + f1(fo[1]) + '">' + stops + "</radialGradient>");
+      }
+      return "url(#" + id + ")";
+    }
+    function arcPts(cx, cy, rx, ry, rot, a0, a1) {
+      var n = Math.max(8, Math.min(180, Math.ceil(Math.abs(a1 - a0) * Math.max(rx, ry) * scale() / 5))), res = [];
+      for (var i = 0; i <= n; i++) {
+        var t = a0 + (a1 - a0) * i / n, x = rx * Math.cos(t), y = ry * Math.sin(t);
+        res.push([cx + x * Math.cos(rot) - y * Math.sin(rot), cy + x * Math.sin(rot) + y * Math.cos(rot)]);
+      }
+      return res;
+    }
+    ctx.setTransform = function (a, b, c, d, e, f) { m = [a, b, c, d, e, f]; };
+    ctx.save = function () { st.push({ m: m.slice(), fs: ctx.fillStyle, ss: ctx.strokeStyle, lw: ctx.lineWidth }); };
+    ctx.restore = function () { var o = st.pop(); if (o) { m = o.m; ctx.fillStyle = o.fs; ctx.strokeStyle = o.ss; ctx.lineWidth = o.lw; } };
+    ctx.translate = function (x, y) { m[4] += m[0] * x + m[2] * y; m[5] += m[1] * x + m[3] * y; };
+    ctx.rotate = function (r) { var c = Math.cos(r), s = Math.sin(r), a = m[0], b = m[1], cc = m[2], d = m[3]; m[0] = a * c + cc * s; m[1] = b * c + d * s; m[2] = cc * c - a * s; m[3] = d * c - b * s; };
+    ctx.createLinearGradient = function (x0, y0, x1, y1) { return grad("l", [x0, y0, x1, y1]); };
+    ctx.createRadialGradient = function (x0, y0, r0, x1, y1, r1) { return grad("r", [x0, y0, r0, x1, y1, r1]); };
+    ctx.beginPath = function () { path = []; };
+    ctx.moveTo = function (x, y) { path.push("M" + pt(x, y)); };
+    ctx.lineTo = function (x, y) { path.push("L" + pt(x, y)); };
+    ctx.closePath = function () { path.push("Z"); };
+    ctx.bezierCurveTo = function (a, b, c, d, e, f) { path.push("C" + pt(a, b) + " " + pt(c, d) + " " + pt(e, f)); };
+    ctx.quadraticCurveTo = function (a, b, c, d) { path.push("Q" + pt(a, b) + " " + pt(c, d)); };
+    ctx.ellipse = function (cx, cy, rx, ry, rot, a0, a1) {
+      var ps = arcPts(cx, cy, rx, ry, rot, a0, Math.min(a1, a0 + Math.PI * 2));
+      path.push((path.length ? "L" : "M") + pt(ps[0][0], ps[0][1]) + ps.slice(1).map(function (p) { return "L" + pt(p[0], p[1]); }).join(""));
+    };
+    ctx.arc = function (cx, cy, r, a0, a1) { ctx.ellipse(cx, cy, r, r, 0, a0, a1); };
+    ctx.rect = function (x, y, w, h) { path.push("M" + pt(x, y) + "L" + pt(x + w, y) + "L" + pt(x + w, y + h) + "L" + pt(x, y + h) + "Z"); };
+    ctx.roundRect = function (x, y, w, h) { ctx.rect(x, y, w, h); };
+    ctx.fill = function () { if (path.length) out.push('<path d="' + path.join("") + '" fill="' + paint(ctx.fillStyle) + '"/>'); };
+    ctx.stroke = function () { if (path.length) out.push('<path d="' + path.join("") + '" fill="none" stroke="' + paint(ctx.strokeStyle) + '" stroke-width="' + f1(ctx.lineWidth * scale()) + '" stroke-linecap="' + ctx.lineCap + '"/>'); };
+    ctx.fillRect = function (x, y, w, h) { path = []; ctx.rect(x, y, w, h); ctx.fill(); path = []; };
+    var cv = { clientWidth: W, clientHeight: H, width: W, height: H, getContext: function () { return ctx; } };
+    var keepDpr = window.devicePixelRatio;
+    try { Object.defineProperty(window, "devicePixelRatio", { value: 1, configurable: true }); } catch (e) {}
+    try { drawPlate(cv, r.farben, r.name, false); } finally { try { Object.defineProperty(window, "devicePixelRatio", { value: keepDpr, configurable: true }); } catch (e) {} }
+    return '<svg xmlns="http://www.w3.org/2000/svg" width="' + W + '" height="' + H + '" viewBox="0 0 ' + W + " " + H + '"><defs>' + defs.join("") + "</defs>" + out.join("") + "</svg>";
+  }
+  function slugFile(n) { return (slug(n) || "rezept").slice(0, 60) + ".svg"; }
+  // Lädt das Bild hoch und liefert die Datei-ID, oder null. Ein Fehler hier hält das Speichern nie auf.
+  function uploadDishImage(r) {
+    var svg;
+    try { svg = svgPlate(r); } catch (e) { return Promise.resolve(null); }
+    if (!svg || new Blob([svg]).size > 190000) return Promise.resolve(null);
+    return mcp.callTool(NOTION, "notion-create-attachment", { filename: slugFile(r.name), content: svg })
+      .then(function (res) {
+        var p = res && res.payload, id = p && p.file_upload_id;
+        if (!id) { var mm = /file-upload:\/\/([0-9a-f-]{36})/.exec(JSON.stringify(p || res || "")); id = mm && mm[1]; }
+        return id || null;
+      }, function () { return null; });
+  }
+
+  // Ergänzt bei einer schon gespeicherten Seite das Bild: oben im Inhalt und im Feld "Bild".
+  function addImageToPage(r, pageUrl) {
+    if (saving || !mcp) return;
+    saving = true;
+    saveMsg("Suche die Seite im Rezepte Buch …");
+    var find = pageUrl ? Promise.resolve(pageUrl) : mcp.callTool(NOTION, "notion-search", { query: r.name, data_source_url: "collection://" + BOOK_DS, page_size: 5 }, { cache: false })
+      .then(function (res) {
+        var list = (res && res.payload && Array.isArray(res.payload.results)) ? res.payload.results : [];
+        var hit = list.filter(function (x) { return norm(x.title) === norm(r.name); })[0];
+        return hit ? hit.url : null;
+      });
+    find.then(function (url) {
+      if (!url) throw { code: "not_found" };
+      saveMsg("Lade das Bild hoch …");
+      return uploadDishImage(r).then(function (fileId) {
+        if (!fileId) throw { code: "no_image" };
+        saveMsg("Trage das Bild ein …");
+        return mcp.callTool(NOTION, "notion-update-page", { page_id: url, command: "insert_content", position: { type: "start" }, content: '<image source="file-upload://' + fileId + '" />' })
+          .then(function () {
+            return mcp.callTool(NOTION, "notion-update-page", { page_id: url, command: "update_properties", properties: { Bild: [fileId] } }).catch(function () {});
+          });
+      });
+    }).then(function () {
+      saving = false; rememberImg(r.name);
+      if (cur === r) renderSave("Bild eingetragen. Status: " + esc(STATUS) + ".");
+    }).catch(function (e) {
+      saving = false;
+      if (cur !== r) return;
+      var msg = e && e.code === "not_found" ? "Die Seite habe ich im Rezepte Buch nicht gefunden."
+        : e && e.code === "no_image" ? "Das Bild ließ sich nicht hochladen. Bitte später noch einmal versuchen."
+        : mcpErr(e, true);
+      renderSave(msg, "warn");
+    });
+  }
+
   function saveToNotion(force) {
     if (saving || !cur || !mcp) return;
     var r = cur;
@@ -987,22 +1112,37 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
         saving = false;
         var box = $("saveBox");
         box.innerHTML = '<p class="savemsg warn">„' + esc(hit.title) + '“ steht schon in deinem <a href="' + esc(safeUrl(hit.url)) + '" target="_blank" rel="noopener noreferrer">Rezepte Buch</a>.</p>' +
-          '<div class="saverow"><button type="button" class="savebtn ghost" id="dupNo">Abbrechen</button><button type="button" class="savebtn" id="dupYes">Trotzdem anlegen</button></div>';
+          '<button type="button" class="savebtn" id="dupImg">Bild bei diesem Rezept ergänzen</button>' +
+          '<div class="saverow"><button type="button" class="savebtn ghost" id="dupNo">Abbrechen</button><button type="button" class="savebtn ghost" id="dupYes">Neu anlegen</button></div>';
         $("dupNo").onclick = function () { renderSave(); };
+        $("dupImg").onclick = function () { remember(r.name, hit.url); addImageToPage(r, hit.url); };
         $("dupYes").onclick = function () { saveToNotion(true); };
         return;
       }
-      saveMsg("Lege die Seite in Notion an …");
-      return mcp.callTool(NOTION, "notion-create-pages", {
-        parent: { type: "data_source_id", data_source_id: BOOK_DS },
-        pages: [(function () {
-          var pg = { properties: { Name: r.name, Status: STATUS, Kategorie: notionKats(r) }, icon: r.emoji || "🍽️", content: notionMarkdown(r) };
+      saveMsg("Lade das Bild hoch …");
+      return uploadDishImage(r).then(function (fileId) {
+        r._imgOk = !!fileId;
+        saveMsg("Lege die Seite in Notion an …");
+        var create = function (withExtras) {
+          var props = { Name: r.name, Status: STATUS, Kategorie: notionKats(r) };
+          if (withExtras) {
+            props.Description = String(r.beschreibung || "").slice(0, 1900);
+            props.Personenanzahl = curServ;
+            props.Zutaten = zutatenText(r);
+            if (r.quelle) props["userDefined:URL"] = r.quelle;
+            if (fileId) props.Bild = [fileId];
+          }
+          var pg = { properties: props, icon: r.emoji || "🍽️",
+            content: (fileId ? '<image source="file-upload://' + fileId + '" />\n\n' : "") + notionMarkdown(r) };
           if (/^https:\/\/[^\s"<>]+$/i.test(r.bild || "")) pg.cover = r.bild;
-          return pg;
-        })()]
+          return mcp.callTool(NOTION, "notion-create-pages", { parent: { type: "data_source_id", data_source_id: BOOK_DS }, pages: [pg] });
+        };
+        // Fehlt eine der neuen Eigenschaften in der Datenbank, lehnt Notion ab, ohne etwas anzulegen: dann einmal ohne sie.
+        return create(true).catch(function (e) { if (e && e.code === "tool_error") return create(false); throw e; });
       }).then(function (res) {
         saving = false;
         remember(r.name, findUrl(res && (res.payload || res.content)));
+        if (r._imgOk) rememberImg(r.name);
         if (cur === r) renderSave();
       });
     }).catch(function (e) {
@@ -1023,6 +1163,10 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
     ["Vorspeisen", /vorspeise|suppe|salat|bruschetta|carpaccio|antipasti|dip|häppchen/]
   ];
   function guessKat(r) {
+    var nk = "";
+    for (var n = 0; n < KAT_WORDS.length; n++) if (KAT_WORDS[n][1].test(String(r.name).toLowerCase())) { nk = KAT_WORDS[n][0]; break; }
+    // Claude nennt manchmal nur die Ernährungsform; ein Gang aus dem Namen (Suppe, Kuchen, Pasta …) hat Vorrang.
+    if ((r.kategorie === "Vegetarisch" || r.kategorie === "Vegan") && nk && nk !== "Fleisch" && nk !== "Fisch") return nk;
     if (KATS.indexOf(r.kategorie) > -1) return r.kategorie;
     var hay = (r.name + " " + r.zutaten.map(function (z) { return z.name; }).join(" ")).toLowerCase();
     var nameOnly = String(r.name).toLowerCase();
