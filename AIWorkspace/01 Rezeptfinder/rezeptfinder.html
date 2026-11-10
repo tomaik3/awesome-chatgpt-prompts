@@ -741,6 +741,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
           "</div>" +
           '<p class="timeline">Vorbereitung ' + t.vorbereitung + " Min · Kochen " + t.kochen + " Min · Ruhezeit " + t.ruhe + " Min</p>" +
           '<div class="save" id="saveBox" hidden></div>' +
+          '<button type="button" class="savebtn ghost" id="dlImg" hidden style="margin-top:8px;width:100%">Bild speichern (für ein Notion-Cover)</button>' +
         "</header>" +
         (cf.length ? '<div class="alert" role="alert">Achtung: Enthält trotz deiner Auswahl ' + esc(cf.join(", ")) + ". Bitte ersetzen oder ein anderes Gericht wählen.</div>" : "") +
         "<section>" +
@@ -787,6 +788,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
     });
     drawPlate($("hero"), r.farben, r.name, false);
     renderSave();
+    renderDl();
     save();
     if (!quiet) { addToBook(r); $("rec").scrollIntoView({ behavior: "smooth", block: "start" }); }
   }
@@ -1092,6 +1094,28 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
     });
   }
 
+  // Speichert das Tellerbild als JPG, damit es in Notion unter Cover → Hochladen eingesetzt werden kann.
+  var downloads = null;
+  function renderDl() { var b = $("dlImg"); if (b) b.hidden = !downloads; }
+  function saveDishImage() {
+    var r = cur, b = $("dlImg"); if (!r || !downloads || !b) return;
+    var c = document.createElement("canvas");
+    c.style.width = "1600px"; c.style.height = "800px";
+    c.style.position = "fixed"; c.style.left = "-99999px"; document.body.appendChild(c);
+    try { Object.defineProperty(c, "clientWidth", { value: 1600 }); Object.defineProperty(c, "clientHeight", { value: 800 }); } catch (e) {}
+    drawPlate(c, r.farben, r.name, false);
+    c.toBlob(function (blob) {
+      c.remove();
+      if (!blob) return;
+      downloads.save({ filename: slug(r.name) + ".jpg", data: blob }).then(function () {
+        b.textContent = "Gespeichert. In Notion: Cover → Hochladen";
+      }, function (e) {
+        b.textContent = e && e.code === "declined" ? "Bild speichern (für ein Notion-Cover)" : "Speichern hat nicht geklappt. Bitte noch einmal versuchen.";
+      });
+    }, "image/jpeg", 0.86);
+  }
+  $("rec").addEventListener("click", function (e) { if (e.target.closest("#dlImg")) saveDishImage(); });
+
   function saveToNotion(force) {
     if (saving || !cur || !mcp) return;
     var r = cur;
@@ -1277,6 +1301,7 @@ button:focus-visible, select:focus-visible { outline: 3px solid var(--tomato); o
   if (window.claude && window.claude.use) {
     window.claude.use("sample").then(function (s) { sample = s || null; setMode(); }).catch(function () { sample = null; setMode(); });
     window.claude.use("mcp").then(function (m) { mcp = m || null; renderSave(); }).catch(function () { mcp = null; });
+    window.claude.use("downloads").then(function (d) { downloads = d || null; renderDl(); }).catch(function () { downloads = null; });
   }
 })();
 </script>
